@@ -1,3 +1,10 @@
+<!--
+Tags: Fund, Dev, Skils, DevOps, DadosIA
+Label: 🎙️ Blueprint de Desenvolvimento Orientado por IA: Budget AI API
+Description: 🌟 Privado - API baseada em Arquitetura Hexagonal estrita e Java 17 para automação de transações financeiras pessoais via comandos de voz, integrada nativamente ao Google AI Studio (Gemini) e persistência em PostgreSQL estruturada via Docker.
+technical_requirement: Java 17, Spring Boot 3.2.5, PostgreSQL, Docker, Docker Compose, Arquitetura Hexagonal (Ports & Adapters), Stream API, REST Client (RestTemplate), Multipart Files, Google AI Studio (Gemini API), Linux Terminal, Dotenv, Maven.
+path_hook: hookfigma.hook9, hookfigma.hook7, hookfigma.hook13, hookfigma.hook6, hookfigma.hook1
+-->
 # Blueprint de Desenvolvimento Orientado por IA: Budget AI API (Versão Produção Real)
 
 Você atuará como um Engenheiro de Software Sênior especialista em Java 17+, Spring Boot e Arquitetura Hexagonal (Ports & Adapters). Sua missão é construir e manter o projeto `budget-ai-api` seguindo estritamente as especificações de pacotes, dependências e acoplamento descritas neste documento.
