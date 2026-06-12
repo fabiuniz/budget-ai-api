@@ -1,10 +1,10 @@
-# Blueprint de Desenvolvimento Orientado por IA: Budget AI API
+# Blueprint de Desenvolvimento Orientado por IA: Budget AI API (Versão Produção Real)
 
 Você atuará como um Engenheiro de Software Sênior especialista em Java 17+, Spring Boot e Arquitetura Hexagonal (Ports & Adapters). Sua missão é construir o projeto `budget-ai-api` seguindo estritamente as especificações de pacotes, dependências e acoplamento descritas neste documento.
 
 ## ⚖️ Premissas Críticas de Execução
 1. **Isolamento de Frameworks:** A camada `domain` e as interfaces em `application` NÃO devem conter nenhuma anotação do Spring Framework.
-2. **Abstração de IA Externa:** Para evitar falhas de download de artefatos Alpha/Snapshot do Spring AI, as capacidades de IA serão simuladas nativamente em infraestrutura através de inversão de controle.
+2. **Integração Multimodal Real:** As capacidades de IA devem ser executadas através de chamadas HTTP HTTP/REST reais para a API do Google AI Studio, enviando o binário do áudio em formato Base64.
 3. **Estabilidade de Compilação:** Cada arquivo gerado deve conter todos os imports necessários. Não use pseudocódigo ou marcadores de omissão como `// restante do código aqui`.
 
 ---
@@ -12,8 +12,11 @@ Você atuará como um Engenheiro de Software Sênior especialista em Java 17+, S
 ## 🏗️ 1. Estrutura de Diretórios e Pacotes
 
 O projeto deve respeitar rigidamente a seguinte árvore sob a raiz `/home/userlnx/docker/script_docker/java-ia/budget-ai-api/`:
-
+```text
 budget-ai-api/
+├── .env
+├── .gitignore
+├── ai-blueprint.md
 ├── pom.xml
 ├── sftp-config.json
 └── src/
@@ -35,6 +38,8 @@ budget-ai-api/
         │           ├── RunnerTesteIa.java
         │           └── TransactionInMemoryAdapter.java
         └── resources/
+            └── application.properties
+```
 
 ---
 
@@ -42,13 +47,20 @@ budget-ai-api/
 
 ### Arquivo: `pom.xml`
 Gere um arquivo de configuração Maven estável utilizando as seguintes especificações:
-- **Java Version:** 17 (ou 21).
+- **Java Version:** 17.
 - **Spring Boot Starter Parent:** `3.2.5`.
-- **Dependências Core:** `spring-boot-starter-web` e `spring-boot-starter`.
+- **Dependências Core:** `spring-boot-starter-web` e `spring-boot-starter-test` (escopo test).
+- **Dependência de Ambiente:** `io.github.cdimascio:dotenv-java:3.0.0` para gerenciar o arquivo `.env`.
 - **Plugins:** `maven-compiler-plugin` (versão `3.11.0`) configurado com a release correta do Java, e o plugin `spring-boot-maven-plugin`.
 
 ### Arquivo: `sftp-config.json`
-Configure um arquivo JSON de sincronização com o host `vmlinuxd`, porta `22`, usuário `userlnx`, senha `1234`. O caminho remoto deve ser `/home/userlnx/docker/script_docker/java-ia/budget-ai-api`. Configure a propriedade `upload_on_save` como falsa e ignore expressões regulares clássicas de IDEs como `.idea`, `target`, e `.git`.
+Configure um arquivo JSON de sincronização com o host `vmlinuxd`, porta `22`, usuário `userlnx`, senha `1234`. O caminho remoto deve ser `/home/userlnx/docker/script_docker/java-ia/budget-ai-api`. Configure a propriedade `upload_on_save` como falsa e ignore expressões regulares clássicas de IDEs como `.idea`, `target`, `uploads` e `.git`.
+
+### Arquivo: `src/main/resources/application.properties`
+Mapeie os parâmetros operacionais do Spring Boot:
+- Definição da porta servidora (`server.port=8080`).
+- Captura de propriedade de sistema dinâmica para a chave da IA (`google.ai.studio.api.key=${GOOGLE_AI_KEY}`).
+- Limites de tamanho de requisição multipart fixados em `10MB` para suportar arquivos de áudio binários.
 
 ---
 
@@ -80,27 +92,37 @@ Configure um arquivo JSON de sincronização com o host `vmlinuxd`, porta `22`, 
 - Crie uma classe anotada com `@Repository` que implementa a interface `TransactionRepository`.
 - Simule um banco de dados interno utilizando uma lista thread-safe (`Collections.synchronizedList`) e gerencie IDs incrementais automáticos através de um `AtomicLong` iniciando em 1.
 
-### Passo 5: O Motor Simulador de IA (Speech-to-Text & Tool Calling)
+### Passo 5: O Motor de Conexão com Google AI Studio (IA Real Multimodal)
 **Caminho:** `src/main/java/dio/infrastructure/BudgetAiEngine.java`
-- Crie uma classe anotada com `@Component`. Injete o `TransactionService` via construtor.
-- Implemente o método `transcreverAudio(String nomeArquivoAudio)`: Deve interceptar arquivos de áudio fictícios. Se o nome contiver "gasto_cafe", retorne o texto correspondente a um gasto; se contiver "recebi_salario", retorne texto de ganho.
-- Implemente o método `processarIntencaoEToolCalling(String textoTranscrevido)`: Deve realizar análise semântica básica por palavras-chave (ex: "cafe", "salario"), mapear os dados para um objeto `Transaction` e invocar de forma automatizada o método `transactionService.criarTransacao()`.
+- Crie uma classe anotada com `@Component`. Injete o `TransactionService` via construtor e instancie um `RestTemplate`.
+- Capture a chave de autenticação externa do Google usando a anotação `@Value("${google.ai.studio.api.key}")` em um atributo privado `apiKey`.
+- Defina uma constante estática para a URL de chamada REST do Gemini: `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent`.
+- Implemente o método `processarAudioEIntencaoReal(File arquivoAudio)`:
+  - Deve ler os bytes do arquivo físico e convertê-los em uma String **Base64**.
+  - Monte o mapa de requisição estruturado (`contents -> parts`) enviando os dados em formato de payload multimodal inline (`mimeType: "audio/mpeg"`) e o prompt de comando textual em português exigindo o retorno de um JSON puro (contendo `description`, `amount`, e `type`).
+  - Configure o cabeçalho HTTP obrigatório `X-goog-api-key` contendo o valor da sua variável.
+  - Submeta a requisição POST via `RestTemplate`, faça o parse estruturado dos nós de resposta (`candidates -> content -> parts -> text`) e repasse o JSON resultante para a função de *Tool Calling* interna.
+  - Trate o JSON de retorno limpando marcações de markdown e invoque o `transactionService.criarTransacao()` para salvar os dados finais extraídos no core do sistema.
 
-### Passo 6: O Inicializador do Container e Definição de Beans
+### Passo 6: O Inicializador do Container e Injeção de Ambiente (.env)
 **Caminho:** `src/main/java/dio/BudgetAiApiApplication.java`
 - Classe de inicialização padrão do Spring Boot anotada com `@SpringBootApplication`.
-- Forneça um método explícito anotado com `@Bean` para instanciar manualmente o `TransactionService`, injetando a implementação do repositório gerenciada pelo Spring.
+- No método `main`, antes do bootstrap do Spring, inicialize o leitor `Dotenv.configure().ignoreIfMissing().load()`. Transfira todas as variáveis carregadas do arquivo `.env` para as propriedades de sistema do Java (`System.setProperty`) de forma iterativa.
+- Forneça um método explícito anotado com `@Bean` para instanciar manualmente o `TransactionService`, injetando a implementação do repositório gerenciada pelo Spring para manter o desacoplamento de frameworks no Core.
 
-### Passo 7: O Testador de Inicialização em Console
+### Passo 7: O Inibidor de Testes Automáticos via Console
 **Caminho:** `src/main/java/dio/infrastructure/RunnerTesteIa.java`
-- Classe anotada com `@Component` que estende a interface `CommandLineRunner`.
-- No método `run`, execute uma simulação imediata do fluxo passando o arquivo virtual `"gasto_cafe.mp3"` para o `aiEngine` validar o acoplamento das camadas antes de abrir o servidor HTTP.
+- Classe anotada com `@Component` que implementa a interface `CommandLineRunner`.
+- O método `run` deve ter sua lógica interna inteiramente comentada. Isso evita disparos de testes automatizados com arquivos de simulação inexistentes na subida da aplicação, deixando o ecossistema livre para receber requisições dinâmicas via API Web.
 
-### Passo 8: O Adaptador de Entrada Web (Controlador REST)
+### Passo 8: O Adaptador de Entrada Web (Controlador REST Multipart)
 **Caminho:** `src/main/java/dio/infrastructure/BudgetAiController.java`
 - Crie um controlador anotado com `@RestController` mapeando a rota base `@RequestMapping("/api/budget")`.
-- Implemente o endpoint `@PostMapping("/voice")` recebendo uma string contendo o nome do arquivo de áudio através de um `@RequestParam("file")`. Este método deve acionar as rotas do `BudgetAiEngine`.
-- Implemente o endpoint `@GetMapping("/transactions")` (garantindo a capitalização correta do Spring) mapeando o retorno JSON de todas as transações guardadas na memória.
+- Defina uma constante estática apontando para o diretório físico absoluto de armazenamento local no servidor Linux: `/home/userlnx/docker/script_docker/java-ia/budget-ai-api/uploads/`.
+- Implemente o endpoint `@PostMapping("/voice")` recebendo um arquivo binário real enviado via formulário através do parâmetro `@RequestParam("file") MultipartFile file`.
+  - O método deve validar se o arquivo não está vazio, garantir a criação física da pasta de uploads no disco utilizando `pastaDestino.mkdirs()` caso ela não exista, e transferir o arquivo binário enviado para o armazenamento de arquivos usando `file.transferTo()`.
+  - Chame o método `aiEngine.processarAudioEIntencaoReal()` passando o ponteiro do novo arquivo criado e retorne a string de resposta consolidada em um `ResponseEntity.ok()`.
+- Implemente o endpoint `@GetMapping("/transactions")` mapeando o retorno do extrato financeiro em JSON com base em `transactionService.listarTodas()`.
 
 ### Passo 9: Classe de Simulação Alternativa
 **Caminho:** `src/main/java/dio/MainSimulacao.java`
@@ -112,13 +134,12 @@ Configure um arquivo JSON de sincronização com o host `vmlinuxd`, porta `22`, 
 
 Ao finalizar a geração das classes, garanta que os seguintes comportamentos sejam validados:
 
-1. **Compilação e Execução via Console:**
-   Comando: `mvn spring-boot:run`
-   *Log esperado:* Inicialização do Tomcat na porta `8080`, seguido pelo disparo automático do log estruturado da IA registrando a transação simulada do café com ID 1.
+1. **Compilação e Inicialização:**
+   Comando: `mvn spring-boot:run` após garantir que a variável `GOOGLE_AI_KEY` esteja devidamente preenchida no arquivo `.env`. O servidor deve expor a porta `8080` sem travar logs por falta de arquivos locais.
 
-2. **Validação das Rotas HTTP:**
-   Simule ou prepare chamadas usando o protocolo HTTP nativo:
-   - **POST** `http://localhost:8080/api/budget/voice?file=recebi_salario.mp3`
-     *Saída:* Mensagem de sucesso confirmando o processamento do salário por IA.
-   - **GET** `http://localhost:8080/api/budget/transactions`
-     *Saída:* Retorno em formato JSON válido contendo a lista indexada de objetos com IDs auto-incrementados.
+2. **Validação do Endpoint de Voz via cURL (Upload de Áudio Físico):**
+   Execute o comando enviando um arquivo real do seu terminal Linux:
+```bash
+   curl -X POST http://localhost:8080/api/budget/voice \
+     -F "file=@/home/userlnx/docker/script_docker/java-ia/budget-ai-api/audio_real.mp3"
+```
