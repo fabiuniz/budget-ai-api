@@ -20,6 +20,21 @@ public class BudgetAiApiApplication {
         Dotenv dotenv = Dotenv.configure().ignoreIfMissing().load();
         dotenv.entries().forEach(entry -> System.setProperty(entry.getKey(), entry.getValue()));
 
+        // --- BLOCO DEDO-DURO PARA CERTIFICAÇÃO ---
+        String chaveCarregada = System.getProperty("GOOGLE_AI_KEY");
+        System.out.println("\n====================================================");
+        if (chaveCarregada == null || chaveCarregada.isBlank()) {
+            System.err.println("[VALIDAÇÃO] ❌ ERRO CRÍTICO: A variável GOOGLE_AI_KEY está VAZIA!");
+        } else {
+            String inicio = chaveCarregada.substring(0, Math.min(chaveCarregada.length(), 4));
+            String fim = chaveCarregada.substring(Math.max(0, chaveCarregada.length() - 4));
+            System.out.println("[VALIDAÇÃO] ✅ Chave carregada com sucesso pelo Dotenv!");
+            System.out.println("[VALIDAÇÃO] Início/Fim na memória: " + inicio + "..." + fim);
+            System.out.println("[VALIDAÇÃO] Total de caracteres lidos: " + chaveCarregada.length());
+        }
+        System.out.println("====================================================\n");
+        // ------------------------------------------
+
         SpringApplication.run(BudgetAiApiApplication.class, args);
     }
     /**

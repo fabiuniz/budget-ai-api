@@ -15,6 +15,7 @@ import dio.domain.DashboardReport;
 
 @RestController
 @RequestMapping("/api/budget")
+@CrossOrigin(origins = "*")
 public class BudgetAiController {
 
     private final BudgetAiEngine aiEngine;
