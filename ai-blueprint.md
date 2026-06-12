@@ -15,36 +15,39 @@ Você atuará como um Engenheiro de Software Sênior especialista em Java 17+, S
 O projeto deve respeitar rigidamente a seguinte árvore sob a raiz `/home/userlnx/docker/script_docker/java-ia/budget-ai-api/`:
 
     budget-ai-api/
-    ├── .env
-    ├── .gitignore
-    ├── ai-blueprint.md
-    ├── docker-compose.yml
-    ├── pom.xml
-    ├── sftp-config.json
-    └── src/
-        └── main/
-            ├── java/
-            │   └── dio/
-            │       ├── BudgetAiApiApplication.java
-            │       ├── MainSimulacao.java
-            │       ├── application/
-            │       │   ├── input/
-            │       │   │   └── TransactionService.java
-            │       │   └── output/
-            │       │       └── TransactionRepository.java
-            │       ├── domain/
-            │       │   ├── DashboardReport.java
-            │       │   └── Transaction.java
-            │       └── infrastructure/
-            │           ├── BudgetAiController.java
-            │           ├── BudgetAiEngine.java
-            │           ├── RunnerTesteIa.java
-            │           ├── SpringPostgresRepository.java
-            │           ├── TransactionEntity.java
-            │           ├── TransactionInMemoryAdapter.java
-            │           └── TransactionPostgresAdapter.java
-            └── resources/
-                └── application.properties
+├── .env
+├── .gitignore
+├── ai-blueprint.md
+├── docker-compose.yml
+├── pom.xml
+├── sftp-config.json
+├── uploads/                        🆕 (Pasta física para armazenar os arquivos .mp3 de teste)
+└── src/
+    └── main/
+        ├── java/
+        │   └── dio/
+        │       ├── BudgetAiApiApplication.java
+        │       ├── MainSimulacao.java
+        │       ├── application/
+        │       │   ├── input/
+        │       │   │   └── TransactionService.java
+        │       │   └── output/
+        │       │       └── TransactionRepository.java
+        │       ├── domain/
+        │       │   ├── DashboardReport.java
+        │       │   └── Transaction.java
+        │       └── infrastructure/
+        │           ├── BudgetAiController.java
+        │           ├── BudgetAiEngine.java
+        │           ├── RunnerTesteIa.java
+        │           ├── SpringPostgresRepository.java
+        │           ├── TransactionEntity.java
+        │           ├── TransactionInMemoryAdapter.java
+        │           └── TransactionPostgresAdapter.java
+        └── resources/
+            ├── application.properties
+            └── static/             🆕 (Pasta correta para os arquivos do Front-end)
+                └── index.html      🆕 (O seu painel do Dashboard em HTML/JS)
 ```
 
 ---
