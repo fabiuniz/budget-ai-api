@@ -3,6 +3,8 @@ package dio.application.input;
 import dio.domain.Transaction;
 import dio.application.output.TransactionRepository;
 import java.util.List;
+import java.math.BigDecimal;
+import dio.domain.DashboardReport;
 
 /**
  * Servico de Aplicacao (Use Case / Caso de Uso).
@@ -34,5 +36,28 @@ public class TransactionService {
      */
     public List<Transaction> listarTodas() {
         return transactionRepository.findAll();
+    }
+
+    public DashboardReport obterRelatorioDashboard() {
+        System.out.println("[TransactionService] Calculando métricas para o painel...");
+
+        java.util.List<Transaction> todas = transactionRepository.findAll();
+
+        // Soma todas as entradas (INCOME)
+        BigDecimal totalIncome = todas.stream()
+                .filter(t -> "INCOME".equals(t.getType()))
+                .map(Transaction::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        // Soma todas as saídas (EXPENSE)
+        BigDecimal totalExpense = todas.stream()
+                .filter(t -> "EXPENSE".equals(t.getType()))
+                .map(Transaction::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        // Calcula o saldo consolidado (Entradas - Saídas)
+        BigDecimal balance = totalIncome.subtract(totalExpense);
+
+        return new DashboardReport(totalIncome, totalExpense, balance);
     }
 }

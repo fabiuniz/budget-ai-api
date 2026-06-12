@@ -11,6 +11,8 @@ import java.io.File;
 import java.io.IOException;
 import java.util.List;
 
+import dio.domain.DashboardReport;
+
 @RestController
 @RequestMapping("/api/budget")
 public class BudgetAiController {
@@ -61,5 +63,12 @@ public class BudgetAiController {
     public ResponseEntity<List<Transaction>> getAllTransactions() {
         System.out.println("[API-GET] Listando transações.");
         return ResponseEntity.ok(transactionService.listarTodas());
+    }
+
+    @GetMapping("/dashboard")
+    public ResponseEntity<DashboardReport> getDashboard() {
+        System.out.println("[API-GET] Requisição recebida para o painel de controle.");
+        DashboardReport relatorio = transactionService.obterRelatorioDashboard();
+        return ResponseEntity.ok(relatorio);
     }
 }
