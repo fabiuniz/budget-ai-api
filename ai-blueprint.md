@@ -147,9 +147,12 @@ Ao finalizar a execução das classes, garanta que os seguintes comportamentos s
       *Retorno esperado:* Um payload JSON contendo as chaves numéricas estruturadas e computadas pela Stream API:
        {"totalIncome":500.00,"totalExpense":0,"balance":500.00}
 
-   curl -X POST -F "file=@audio_real.mp3" "http://localhost:8080/api/budget/voice"
-    *Retorno esperado:* Uma string contendo respostas computadas pela Stream API:
+    curl -X POST -F "file=@audio_real.mp3" "http://localhost:8080/api/budget/voice"
+      *Retorno esperado:* Uma string contendo respostas computadas pela Stream API:
         Sucesso! Áudio interpretado pelo Google AI Studio e registrado. ID: 4 | Tipo: INCOMEuserlnx@vmlinuxd:~/docker/script_docker/java-ia/budget-ai-api$ 
+
+    espeak -v pt-br "Recebi cem reais de aluguel hoje" -w teste.wav && lame -V2 teste.wav uploads/audio_real.mp3 && rm teste.wav
+      *Retorno esperado:* um audio mp3 com o texto informado
 
    export $(cat .env | xargs) && mvn spring-boot:run
 ```
