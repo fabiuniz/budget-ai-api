@@ -5,6 +5,9 @@ Description: 🌟 Privado - API baseada em Arquitetura Hexagonal estrita e Java 
 technical_requirement: Java 17, Spring Boot 3.2.5, PostgreSQL, Docker, Docker Compose, Arquitetura Hexagonal (Ports & Adapters), Stream API, REST Client (RestTemplate), Multipart Files, Google AI Studio (Gemini API), Linux Terminal, Dotenv, Maven.
 path_hook: hookfigma.hook9, hookfigma.hook7, hookfigma.hook13, hookfigma.hook6, hookfigma.hook1
 -->
+
+![Screenshot do Projeto](./images/screenshot.png)
+
 # Blueprint de Desenvolvimento Orientado por IA: Budget AI API (Versão Produção Real)
 
 Você atuará como um Engenheiro de Software Sênior especialista em Java 17+, Spring Boot e Arquitetura Hexagonal (Ports & Adapters). Sua missão é construir e manter o projeto `budget-ai-api` seguindo estritamente as especificações de pacotes, dependências e acoplamento descritas neste documento.
