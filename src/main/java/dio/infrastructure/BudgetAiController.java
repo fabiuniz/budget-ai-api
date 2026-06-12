@@ -2,14 +2,15 @@ package dio.infrastructure;
 
 import dio.application.input.TransactionService;
 import dio.domain.Transaction;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.File;
+import java.io.IOException;
 import java.util.List;
 
-/**
- * Controlador REST (Input Adapter).
- * Expoe os endpoints HTTP da API para permitir a interacao com o sistema.
- */
 @RestController
 @RequestMapping("/api/budget")
 public class BudgetAiController {
@@ -17,37 +18,48 @@ public class BudgetAiController {
     private final BudgetAiEngine aiEngine;
     private final TransactionService transactionService;
 
-    // Injeção automática via construtor efetuada pelo Spring
+    // Pasta onde os áudios reais enviados via cURL/Upload vão ficar salvos fisicamente no seu Linux
+    private static final String UPLOAD_DIR = "/home/userlnx/docker/script_docker/java-ia/budget-ai-api/uploads/";
+
     public BudgetAiController(BudgetAiEngine aiEngine, TransactionService transactionService) {
         this.aiEngine = aiEngine;
         this.transactionService = transactionService;
     }
 
-    /**
-     * Endpoint para receber um arquivo de áudio e processá-lo com IA.
-     * POST http://localhost:8080/api/budget/voice
-     */
     @PostMapping("/voice")
-    public ResponseEntity<String> enviarComandoVoz(@RequestParam("file") String nomeArquivo) {
-        System.out.println("[Controller] HTTP POST recebido para processamento de voz: " + nomeArquivo);
+    public ResponseEntity<String> processVoice(@RequestParam("file") MultipartFile file) {
+        System.out.println("[API-POST] Upload de áudio detectado: " + file.getOriginalFilename());
 
-        // 1. Transcreve o áudio para texto
-        String textoTranscrevido = aiEngine.transcreverAudio(nomeArquivo);
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest().body("Erro: O arquivo de áudio enviado está vazio.");
+        }
 
-        // 2. Processa as regras de negócio e executa o Tool Calling
-        aiEngine.processarIntencaoEToolCalling(textoTranscrevido);
+        try {
+            // Garante que a pasta 'uploads/' exista no disco rígido
+            File pastaDestino = new File(UPLOAD_DIR);
+            if (!pastaDestino.exists()) {
+                pastaDestino.mkdirs();
+            }
 
-        return ResponseEntity.ok("Áudio '" + nomeArquivo + "' processado com sucesso e registrado via IA!");
+            // Grava o arquivo físico de áudio .mp3 no disco do Linux
+            File arquivoNoDisco = new File(UPLOAD_DIR + file.getOriginalFilename());
+            file.transferTo(arquivoNoDisco);
+            System.out.println("[API-POST] Arquivo gravado com sucesso no disco em: " + arquivoNoDisco.getAbsolutePath());
+
+            // Envia o arquivo gravado para o processamento real da inteligência artificial
+            String resultadoIA = aiEngine.processarAudioEIntencaoReal(arquivoNoDisco);
+            return ResponseEntity.ok(resultadoIA);
+
+        } catch (IOException e) {
+            System.err.println("[API-POST] Falha crítica de I/O ao salvar no disco: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Erro interno ao gravar arquivo no disco rígido do servidor.");
+        }
     }
 
-    /**
-     * Endpoint para listar todo o extrato consolidado.
-     * GET http://localhost:8080/api/budget/transactions
-     */
-    @GetMapping("/transactions") // <-- Corrigido para "G" maiúsculo aqui!
-    public ResponseEntity<List<Transaction>> listarExtrato() {
-        System.out.println("[Controller] HTTP GET recebido para listar extrato.");
-        List<Transaction> transacoes = transactionService.listarTodas();
-        return ResponseEntity.ok(transacoes);
+    @GetMapping("/transactions")
+    public ResponseEntity<List<Transaction>> getAllTransactions() {
+        System.out.println("[API-GET] Listando transações.");
+        return ResponseEntity.ok(transactionService.listarTodas());
     }
 }
