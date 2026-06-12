@@ -151,5 +151,5 @@ Ao finalizar a execução das classes, garanta que os seguintes comportamentos s
     *Retorno esperado:* Uma string contendo respostas computadas pela Stream API:
         Sucesso! Áudio interpretado pelo Google AI Studio e registrado. ID: 4 | Tipo: INCOMEuserlnx@vmlinuxd:~/docker/script_docker/java-ia/budget-ai-api$ 
 
-   export GOOGLE_AI_KEY="sua key" mvn spring-boot:run   
+   export $(cat .env | xargs) && mvn spring-boot:run
 ```
