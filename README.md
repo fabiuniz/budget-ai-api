@@ -6,9 +6,15 @@ technical_requirement: Java 17, Spring Boot 3.2.5, PostgreSQL, Docker, Docker Co
 path_hook: hookfigma.hook9, hookfigma.hook7, hookfigma.hook13, hookfigma.hook6, hookfigma.hook1
 -->
 
+[![Java](https://img.shields.io/badge/Java-17-orange?logo=openjdk)](https://openjdk.org/projects/jdk/17/)
+[![Kotlin](https://img.shields.io/badge/Kotlin-1.9+-purple?logo=kotlin)](https://kotlinlang.org/)
+[![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.2+-brightgreen?logo=springboot)](https://spring.io/projects/spring-boot)
+
 ![Screenshot do Projeto](./images/screenshot.png)
 
-# Blueprint de Desenvolvimento Orientado por IA: Budget AI API (Versão Produção Real)
+# Budget AI API
+
+## Fluxo Blueprint de Desenvolvimento Orientado por IA
 
 Você atuará como um Engenheiro de Software Sênior especialista em Java 17+, Spring Boot e Arquitetura Hexagonal (Ports & Adapters). Sua missão é construir e manter o projeto `budget-ai-api` seguindo estritamente as especificações de pacotes, dependências e acoplamento descritas neste documento.
 
@@ -36,24 +42,28 @@ O projeto deve respeitar rigidamente a seguinte árvore sob a raiz `/home/userln
     └── main/
         ├── java/
         │   └── dio/
-        │       ├── BudgetAiApiApplication.java
-        │       ├── MainSimulacao.java
-        │       ├── application/
-        │       │   ├── input/
-        │       │   │   └── TransactionService.java
-        │       │   └── output/
-        │       │       └── TransactionRepository.java
-        │       ├── domain/
-        │       │   ├── DashboardReport.java
-        │       │   └── Transaction.java
-        │       └── infrastructure/
-        │           ├── BudgetAiController.java
-        │           ├── BudgetAiEngine.java
-        │           ├── RunnerTesteIa.java
-        │           ├── SpringPostgresRepository.java
-        │           ├── TransactionEntity.java
-        │           ├── TransactionInMemoryAdapter.java
-        │           └── TransactionPostgresAdapter.java
+        │   │   ├── BudgetAiApiApplication.java
+        │   │   ├── MainSimulacao.java
+        │   │   ├── application/
+        │   │   │   ├── input/
+        │   │   │   │   └── TransactionService.java
+        │   │   │   └── output/
+        │   │   │       └── TransactionRepository.java
+        │   │   ├── domain/
+        │   │   │   ├── DashboardReport.java
+        │   │   │   └── Transaction.java
+        │   │   └── infrastructure/
+        │   │       ├── BudgetAiController.java
+        │   │       ├── BudgetAiEngine.java
+        │   │       ├── RunnerTesteIa.java
+        │   │       ├── SpringPostgresRepository.java
+        │   │       ├── TransactionEntity.java
+        │   │       ├── TransactionInMemoryAdapter.java
+        │   │       └── TransactionPostgresAdapter.java
+        │   └── kotlin/                                 🆕 (Source Root para compilação do ecossistema Kotlin)
+        │               └── dio/
+        │                   └── infrastructure/
+        │                       └── BudgetAnalysisService.kt    🆕 (Serviço assíncrono preditivo usando Coroutines)
         └── resources/
             ├── application.properties
             └── static/             🆕 (Pasta correta para os arquivos do Front-end)
@@ -67,11 +77,15 @@ O projeto deve respeitar rigidamente a seguinte árvore sob a raiz `/home/userln
 ### Arquivo: `pom.xml`
 Gere um arquivo de configuração Maven estável utilizando as seguintes especificações:
 - **Java Version:** 17 (compatível com execuções em Java 21).
+- **Kotlin Version:** `1.9.23` (configurado com a propriedade `<kotlin.version>`).
 - **Spring Boot Starter Parent:** `3.2.5`.
 - **Dependências Core:** `spring-boot-starter-web`, `spring-boot-starter-data-jpa` e `spring-boot-starter-test` (escopo test).
+- **Dependências Kotlin & Concorrência:** `kotlin-reflect`, `kotlin-stdlib` e `kotlinx-coroutines-core-jvm:1.7.3` para dar suporte a operações assíncronas não-bloqueantes.
 - **Dependência de Banco de Dados:** `org.postgresql:postgresql` (escopo runtime).
 - **Dependência de Ambiente:** `io.github.cdimascio:dotenv-java:3.0.0` para gerenciar o arquivo `.env`.
-- **Plugins:** `maven-compiler-plugin` (versão `3.11.0`) e o plugin `spring-boot-maven-plugin`.
+- **Plugins (Orquestração Híbrida):** - `kotlin-maven-plugin`: Configurado obrigatoriamente na fase `process-sources` para garantir que o **Kotlin compile ANTES do Java**.
+  - `maven-compiler-plugin` (versão `3.11.0`): Configurado de forma coordenada com a fase posterior do ciclo de compilação do compilador Java.
+  - `spring-boot-maven-plugin`.
 
 ### Arquivo: `docker-compose.yml`
 Provisionamento automatizado do banco de dados relacional oficial. Deve subir um container baseado em `postgres:15-alpine`, nomeado como `budget-postgres`, expondo a porta `5432:5432`, mapeando as credenciais de ambiente locais (`POSTGRES_USER: userlnx`, `POSTGRES_PASSWORD: super_senha_123`, `POSTGRES_DB: budget_ai_db`) e isolando os dados através de um volume nomeado (`pgdata`).
@@ -119,9 +133,21 @@ Mapeie os parâmetros operacionais do Spring Boot e do ecossistema de banco de d
 - Classe anotada com `@Component` e demarcada com `@Primary` para assume a precedência de injeção sobre adaptadores temporários em memória. Implementa a porta de saída `TransactionRepository`.
 - Orquestra as conversões de tipo mapeando as operações recebidas para `TransactionEntity`, persistindo-as através do `SpringPostgresRepository` e devolvendo objetos puros de domínio nas saídas das operações de persistência e listagem.
 
-### Passo 6: O Motor de Conexão com Google AI Studio (IA Real Multimodal)
+### Passo 5.1: Modelo de Dados de Interoperabilidade Kotlin-Java (Infraestrutura)
+**Caminho:** `src/main/kotlin/dio/infrastructure/AnaliseResultado.kt`
+- Defina uma `data class` em Kotlin para transporte limpo de dados contendo as propriedades `categoria` (String) e `insightIA` (String). Essa classe será consumida nativamente pelo compilador Java como um POJO clássico.
+
+### Passo 5.2: O Serviço de Análise Preditiva e Concorrência Não-Bloqueante
+**Caminho:** `src/main/kotlin/dio/infrastructure/BudgetAnalysisService.kt`
+- Classe anotada com `@Service` ou `@Component` do Spring, desenvolvida em Kotlin.
+- Deve expor uma função marcada com a palavra-chave **`suspend`**: `processarAnalisePreditiva(description: String, amount: BigDecimal): AnaliseResultado`.
+- Utilize o escopo de concorrência (`coroutineScope`, `async/await`) para simular ou processar regras preditivas de risco, análise de categorias inteligente com base na descrição informada e tratamento de concorrência leve, devolvendo uma instância de `AnaliseResultado`.
+
+### Passo 6: O Motor de Conexão com Google AI Studio e Orquestrador Híbrido
 **Caminho:** `src/main/java/dio/infrastructure/BudgetAiEngine.java`
-- Classe anotada com `@Component` que envia o arquivo de áudio local convertido em **Base64** em um payload REST estruturado (`contents -> parts`) para a API do Gemini via `RestTemplate`. Exige o retorno de um JSON puro contendo metadados financeiros, limpa marcações em bloco de markdown e aciona o core da aplicação para persistir o resultado.
+- Classe anotada com `@Component`. Envia o arquivo de áudio local convertido em **Base64** em um payload REST estruturado para a API do Gemini via `RestTemplate`.
+- **Injeção de Dependência:** Deve receber no construtor único tanto o `TransactionService` (Core/Java) quanto o `BudgetAnalysisService` (Infra/Kotlin).
+- **executarToolCalling(String)**: Limpa marcações markdown e intercepta o fluxo antes de salvar. Aciona a ponte de interoperabilidade da JVM utilizando o executor de bloqueio seguro de threads do ecossistema do Kotlin: kotlinx.coroutines.BuildersKt.runBlocking. Passa obrigatoriamente o EmptyCoroutineContext.INSTANCE no primeiro parâmetro para blindar o interop e transfere os parâmetros extraídos da LLM para a coroutine suspensa do Kotlin, captura o objeto AnaliseResultado gerado, adota fallbacks inteligentes baseados em Null Safety caso a descrição venha nula, e transfere a entidade limpa e higienizada para a persistência definitiva no Core.
 
 ### Passo 7: O Inicializador do Container e Injeção de Ambiente (.env)
 **Caminho:** `src/main/java/dio/BudgetAiApiApplication.java`
@@ -168,4 +194,34 @@ Ao finalizar a execução das classes, garanta que os seguintes comportamentos s
       *Retorno esperado:* um audio mp3 com o texto informado
 
    export $(cat .env | xargs) && mvn spring-boot:run
+   export $(cat .env | xargs) && mvn spring-boot:run -Dspring-boot.run.jvmArguments="-Djava.net.preferIPv4Stack=true"
+```
+
+# Fluxo explicativo (para humanos)
+
+Para demonstrar os padrões de resiliência e concorrência exigidos em ambientes corporativos, o componente BudgetAnalysisService foi implementado em Kotlin para introduzir conceitos avançados de computação assíncrona paralela:
+
+### 1. Concorrência Não-Bloqueante de Alta Performance (Coroutines)
+A orquestração do pipeline preditivo e classificação de risco foi desenhada usando Kotlin Coroutines através da ponte de interoperabilidade runBlocking integrada à JVM:
+* Suspensão de Threads (suspend): Durante o tempo de espera de processamento das rotinas de inteligência, as Threads do Tomcat (Java) não são bloqueadas. Elas são liberadas para atender outras requisições HTTP no dashboard, otimizando o throughput do servidor.
+* Mecanismo Continuation-Passing Style (CPS): O Java invoca o serviço em Kotlin passando um objeto Continuation (sob o capô), que funciona como um callback de baixíssimo nível controlado pela JVM para retomar o fluxo assim que a análise assíncrona terminar.
+
+### 2. Sistema de Tipos & Resiliência (Null Safety)
+Manipular payloads voláteis vindos de motores de IA e áudio é um desafio para a estabilidade do sistema. O módulo Kotlin blinda o Core da aplicação contra o temido NullPointerException:
+* Uso estrito de tipos anuláveis (BigDecimal?, String?).
+* Tratamento defensivo via Elvis Operator (?:) para garantir fallbacks seguros e dados sanitizados antes que o registro seja entregue ao JPA/Hibernate para persistência no PostgreSQL.
+
+---
+
+## ⚙️ Fluxo de Execução Híbrido
+
+```mermaid
+graph TD
+    A[Front-end / cURL] -->|POST /voice| B(BudgetAiController - Java)
+    B -->|Processar Áudio| C(BudgetAiEngine - Java)
+    C -->|Bypass / Gemini Response| D{runBlocking Interop}
+    D -->|Injeta EmptyCoroutineContext| E[BudgetAnalysisService - Kotlin]
+    E -->|suspend function Coroutine| F[Pipeline Preditivo Assíncrono]
+    F -->|Retorna AnaliseResultado| D
+    D -->|Persistir Dados via JPA| G[PostgreSQL - Docker]
 ```
