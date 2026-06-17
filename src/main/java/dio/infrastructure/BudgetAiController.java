@@ -51,6 +51,15 @@ public class BudgetAiController {
 
             // Envia o arquivo gravado para o processamento real da inteligência artificial
             String resultadoIA = aiEngine.processarAudioEIntencaoReal(arquivoNoDisco);
+            
+            // =========================================================================
+            // 🌟 ÚNICO AJUSTE ADICIONADO: INTERCEPTA O ERRO TRATADO DO GOOGLE GEMINI
+            // =========================================================================
+            if (resultadoIA.startsWith("ERRO_IA:")) {
+                String mensagemLimpa = resultadoIA.replace("ERRO_IA:", "").trim();
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(mensagemLimpa);
+            }
+
             return ResponseEntity.ok(resultadoIA);
 
         } catch (IOException e) {
