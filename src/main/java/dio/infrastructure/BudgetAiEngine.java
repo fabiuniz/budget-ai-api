@@ -19,6 +19,7 @@ public class BudgetAiEngine {
 
     private final TransactionService transactionService;
     private final RestTemplate restTemplate;
+    private final BudgetAnalysisService budgetAnalysisService;
 
     @Value("${google.ai.studio.api.key}")
     private String apiKey;
@@ -27,8 +28,9 @@ public class BudgetAiEngine {
     // Altere para o modelo correto sem o "1.5"
     private static final String GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent";
 
-    public BudgetAiEngine(TransactionService transactionService) {
+    public BudgetAiEngine(TransactionService transactionService, BudgetAnalysisService budgetAnalysisService) {
         this.transactionService = transactionService;
+        this.budgetAnalysisService = budgetAnalysisService;
         this.restTemplate = new RestTemplate();
     }
 
@@ -60,14 +62,18 @@ public class BudgetAiEngine {
             String textoJsonDaIa = extrairTextoDaResposta(response.getBody());
             System.out.println("[IA-ENGINE] Resposta estruturada recebida da IA: " + textoJsonDaIa);
 
+            // 🌟 CORREÇÃO AQUI: Mudado de "ejecutar" para "executar" com X
             return executarToolCalling(textoJsonDaIa);
 
         } catch (IOException e) {
             System.err.println("[IA-ENGINE] Erro ao ler arquivo de áudio: " + e.getMessage());
-            return "Falha ao ler arquivo de áudio físico.";
+            return "ERRO_IA: Falha ao ler arquivo de áudio físico no servidor.";
         } catch (Exception e) {
             System.err.println("[IA-ENGINE] Erro na integração com Google AI Studio: " + e.getMessage());
-            return "Falha ao processar IA no Google AI Studio: " + e.getMessage();
+            if (e.getMessage() != null && e.getMessage().contains("503")) {
+               return "ERRO_IA: O servidor do Google Gemini está sobrecarregado devido à alta demanda global neste momento. Por favor, tente enviar o áudio novamente em alguns segundos.";
+            }
+            return "ERRO_IA: Falha ao processar IA no Google AI Studio. Detalhe: " + e.getMessage();
         }
     }
 
@@ -109,16 +115,35 @@ public class BudgetAiEngine {
         String amountStr = buscarChaveJson(jsonLimpo, "amount");
         String type = buscarChaveJson(jsonLimpo, "type").toUpperCase();
 
+        BigDecimal valorBruto = amountStr.isEmpty() ? BigDecimal.ZERO : new BigDecimal(amountStr);
+
+        String categoriaFinal = description;
+
+        // Try/Catch adicionado para blindar a chamada do runBlocking do Kotlin contra InterruptedException
+        try {
+            System.out.println("[IA-ENGINE] [INTEROP] Chamando o motor assíncrono do Kotlin com Coroutines...");
+            dio.infrastructure.AnaliseResultado resultadoKotlin = kotlinx.coroutines.BuildersKt.runBlocking(
+                    null,
+                    (scope, continuation) -> budgetAnalysisService.processarAnalisePreditiva(description, valorBruto, continuation)
+            );
+            System.out.println("[IA-ENGINE] Resposta do Kotlin recebida com sucesso!");
+            if (categoriaFinal.isEmpty()) {
+                categoriaFinal = resultadoKotlin.getCategoria();
+            }
+        } catch (Exception e) {
+            System.err.println("[IA-ENGINE] Erro ou interrupção ao executar rotina do Kotlin: " + e.getMessage());
+        }
+
         Transaction transaction = new Transaction();
-        transaction.setDescription(description);
-        transaction.setAmount(new BigDecimal(amountStr));
+        transaction.setDescription(categoriaFinal.isEmpty() ? "CATEGORIA_DESCONHECIDA" : categoriaFinal);
+        transaction.setAmount(valorBruto);
         transaction.setType(type.contains("INCOME") ? "INCOME" : "EXPENSE");
         transaction.setCreatedAt(LocalDateTime.now());
 
         System.out.println("[IA-ENGINE] [TOOL CALLING ACTIVATED] Invocando Core da Aplicação...");
         Transaction cadastrada = transactionService.criarTransacao(transaction);
 
-        return "Sucesso! Áudio interpretado pelo Google AI Studio e registrado. ID: " + cadastrada.getId() + " | Tipo: " + cadastrada.getType();
+        return "Sucesso! Áudio processado pelo pipeline híbrido Java/Kotlin. ID: " + cadastrada.getId();
     }
 
     private String buscarChaveJson(String json, String chave) {
