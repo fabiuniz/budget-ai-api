@@ -1,12 +1,12 @@
 <!--
 Tags: Fund, Dev, Skils, DevOps, DadosIA
 Label: 🎙️ Blueprint de Desenvolvimento Orientado por IA: Budget AI API
-Description: 🌟 Privado - API baseada em Arquitetura Hexagonal estrita e Java 17 para automação de transações financeiras pessoais via comandos de voz, integrada nativamente ao Google AI Studio (Gemini) e persistência em PostgreSQL estruturada via Docker.
-technical_requirement: Java 17, Spring Boot 3.2.5, PostgreSQL, Docker, Docker Compose, Arquitetura Hexagonal (Ports & Adapters), Stream API, REST Client (RestTemplate), Multipart Files, Google AI Studio (Gemini API), Linux Terminal, Dotenv, Maven.
+Description: 🌟 Privado - API baseada em Arquitetura Hexagonal estrita e Java 21 para automação de transações financeiras pessoais via comandos de voz, integrada nativamente ao Google AI Studio (Gemini) e persistência em PostgreSQL estruturada via Docker.
+technical_requirement: Java 21, Spring Boot 3.2.5, PostgreSQL, Docker, Docker Compose, Arquitetura Hexagonal (Ports & Adapters), Stream API, REST Client (RestTemplate), Multipart Files, Google AI Studio (Gemini API), Linux Terminal, Dotenv, Maven.
 path_hook: hookfigma.hook9, hookfigma.hook7, hookfigma.hook13, hookfigma.hook6, hookfigma.hook1
 -->
 
-[![Java](https://img.shields.io/badge/Java-17-orange?logo=openjdk)](https://openjdk.org/projects/jdk/17/)
+[![Java](https://img.shields.io/badge/Java-21-orange?logo=openjdk)](https://openjdk.org/projects/jdk/21/)
 [![Kotlin](https://img.shields.io/badge/Kotlin-1.9+-purple?logo=kotlin)](https://kotlinlang.org/)
 [![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.2+-brightgreen?logo=springboot)](https://spring.io/projects/spring-boot)
 
@@ -16,7 +16,7 @@ path_hook: hookfigma.hook9, hookfigma.hook7, hookfigma.hook13, hookfigma.hook6, 
 
 ## Fluxo Blueprint de Desenvolvimento Orientado por IA
 
-Você atuará como um Engenheiro de Software Sênior especialista em Java 17+, Spring Boot e Arquitetura Hexagonal (Ports & Adapters). Sua missão é construir e manter o projeto `budget-ai-api` seguindo estritamente as especificações de pacotes, dependências e acoplamento descritas neste documento.
+Você atuará como um Engenheiro de Software Sênior especialista em Java 21+, Spring Boot e Arquitetura Hexagonal (Ports & Adapters). Sua missão é construir e manter o projeto `budget-ai-api` seguindo estritamente as especificações de pacotes, dependências e acoplamento descritas neste documento.
 
 ## ⚖️ Premissas Críticas de Execução
 1. **Isolamento de Frameworks:** A camada `domain` e as interfaces em `application` NÃO devem conter nenhuma anotação do Spring Framework ou Jakarta Persistence (`@Entity`, `@Id`, etc.).
@@ -42,28 +42,30 @@ O projeto deve respeitar rigidamente a seguinte árvore sob a raiz `/home/userln
     └── main/
         ├── java/
         │   └── dio/
-        │   │   ├── BudgetAiApiApplication.java
-        │   │   ├── MainSimulacao.java
-        │   │   ├── application/
-        │   │   │   ├── input/
-        │   │   │   │   └── TransactionService.java
-        │   │   │   └── output/
-        │   │   │       └── TransactionRepository.java
-        │   │   ├── domain/
-        │   │   │   ├── DashboardReport.java
-        │   │   │   └── Transaction.java
-        │   │   └── infrastructure/
-        │   │       ├── BudgetAiController.java
-        │   │       ├── BudgetAiEngine.java
-        │   │       ├── RunnerTesteIa.java
-        │   │       ├── SpringPostgresRepository.java
-        │   │       ├── TransactionEntity.java
-        │   │       ├── TransactionInMemoryAdapter.java
-        │   │       └── TransactionPostgresAdapter.java
-        │   └── kotlin/                                 🆕 (Source Root para compilação do ecossistema Kotlin)
-        │               └── dio/
-        │                   └── infrastructure/
-        │                       └── BudgetAnalysisService.kt    🆕 (Serviço assíncrono preditivo usando Coroutines)
+        │       ├── BudgetAiApiApplication.java
+        │       ├── MainSimulacao.java
+        │       ├── application/
+        │       │   ├── input/
+        │       │   │   └── TransactionService.java
+        │       │   └── output/
+        │       │       └── TransactionRepository.java
+        │       ├── domain/
+        │       │   ├── DashboardReport.java
+        │       │   └── Transaction.java
+        │       └── infrastructure/
+        │           ├── BudgetAiController.java
+        │           ├── BudgetAiEngine.java
+        │           ├── RunnerTesteIa.java
+        │           ├── SpringPostgresRepository.java
+        │           ├── TransactionEntity.java
+        │           ├── TransactionInMemoryAdapter.java
+        │           └── TransactionPostgresAdapter.java
+        ├── kotlin/                                 🆕 (Source Root para compilação do ecossistema Kotlin)
+        │   └── dio/
+        │       ├── domain/
+        │       │   └── Transaction.kt
+        │       └── infrastructure/
+        │           └── BudgetAnalysisService.kt    🆕 (Serviço assíncrono preditivo usando Coroutines)
         └── resources/
             ├── application.properties
             └── static/             🆕 (Pasta correta para os arquivos do Front-end)
@@ -76,7 +78,7 @@ O projeto deve respeitar rigidamente a seguinte árvore sob a raiz `/home/userln
 
 ### Arquivo: `pom.xml`
 Gere um arquivo de configuração Maven estável utilizando as seguintes especificações:
-- **Java Version:** 17 (compatível com execuções em Java 21).
+- **Java Version:** 21 (compatível com execuções em Java 21).
 - **Kotlin Version:** `1.9.23` (configurado com a propriedade `<kotlin.version>`).
 - **Spring Boot Starter Parent:** `3.2.5`.
 - **Dependências Core:** `spring-boot-starter-web`, `spring-boot-starter-data-jpa` e `spring-boot-starter-test` (escopo test).
@@ -193,8 +195,16 @@ Ao finalizar a execução das classes, garanta que os seguintes comportamentos s
     espeak -v pt-br "Recebi cem reais de aluguel hoje" -w teste.wav && lame -V2 teste.wav uploads/audio_real.mp3 && rm teste.wav
       *Retorno esperado:* um audio mp3 com o texto informado
 
+   kill -9 $(lsof -t -i:8080)
    export $(cat .env | xargs) && mvn spring-boot:run
    export $(cat .env | xargs) && mvn spring-boot:run -Dspring-boot.run.jvmArguments="-Djava.net.preferIPv4Stack=true"
+```
+3. **Para o Gemini funcionar adicione:**
+```bash
+nano /etc/resolv.conf
+nameserver 8.8.8.8
+nameserver 8.8.4.4
+
 ```
 
 # Fluxo explicativo (para humanos)
