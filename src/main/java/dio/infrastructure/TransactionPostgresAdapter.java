@@ -6,9 +6,11 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.springframework.context.annotation.Profile;
 
 @Component
 @Primary // Força o Spring Boot a priorizar este Adapter de Banco Real
+@Profile("prod")
 public class TransactionPostgresAdapter implements TransactionRepository {
 
     private final SpringPostgresRepository springRepository;

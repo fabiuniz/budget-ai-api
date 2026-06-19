@@ -10,11 +10,12 @@ path_hook: hookfigma.hook9, hookfigma.hook7, hookfigma.hook13, hookfigma.hook6, 
 [![Kotlin](https://img.shields.io/badge/Kotlin-1.9+-purple?logo=kotlin)](https://kotlinlang.org/)
 [![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.2+-brightgreen?logo=springboot)](https://spring.io/projects/spring-boot)
 
-![Screenshot do Projeto](./images/screenshot.png)
-
 # Budget AI API
 
-## Fluxo Blueprint de Desenvolvimento Orientado por IA
+![Screenshot do Projeto](./images/screenshot.png)
+
+
+# 🤖 Fluxo Blueprint de Desenvolvimento Orientado por IA
 
 Você atuará como um Engenheiro de Software Sênior especialista em Java 21+, Spring Boot e Arquitetura Hexagonal (Ports & Adapters). Sua missão é construir e manter o projeto `budget-ai-api` seguindo estritamente as especificações de pacotes, dependências e acoplamento descritas neste documento.
 
@@ -209,7 +210,7 @@ nameserver 8.8.4.4
 
 ```
 
-# Fluxo explicativo (para humanos)
+# 🧩 Fluxo explicativo (para humanos)
 
 Para demonstrar os padrões de resiliência e concorrência exigidos em ambientes corporativos, o componente BudgetAnalysisService foi implementado em Kotlin para introduzir conceitos avançados de computação assíncrona paralela:
 
@@ -236,4 +237,57 @@ graph TD
     E -->|suspend function Coroutine| F[Pipeline Preditivo Assíncrono]
     F -->|Retorna AnaliseResultado| D
     D -->|Persistir Dados via JPA| G[PostgreSQL - Docker]
+```
+
+## 🏛️ A Ordem das Camadas (De Fora para Dentro - Hexagonal)
+
+A estrutura de pastas reflete o nível de isolamento do código, funcionando como as camadas de uma cebola, unificando os ecossistemas Java e Kotlin na JVM:
+
+### 🔄 1ª Camada (Mais Externa): `infrastructure`
+É a "casca" do seu sistema. Tudo que precisa de uma biblioteca, banco de dados, internet, framework, rotas web ou concorrência assíncrona pesada fica aqui.
+* **O que tem nela (Java):** `BudgetAiController` (Web), `BudgetAiEngine` (Gemini IA), `TransactionPostgresAdapter` (PostgreSQL).
+* **O que tem nela (Kotlin):** `BudgetAnalysisService.kt` (Mecanismo de Coroutines para análise preditiva).
+* **⚙️ Comportamento do Spring Boot:**
+
+    Pastas de INFRASTRUCTURE ──> Tem @Component, @RestController, @Repository...
+                                 └─► O Spring espiona e injeta TUDO AUTOMATICAMENTE.
+
+### 🚪 2ª Camada (Intermediária): `application`
+É a camada que dita as regras do aplicativo (os Casos de Uso - algoritimos dos requisitos de negócio). Ela recebe os dados da infraestrutura através de "portas" (interfaces) e orquestra o fluxo do que deve ser feito.
+* **O que tem nela (Java):** `TransactionService.java` (Input/Entrada) e `TransactionRepository.java` (Output/Saída - Interface).
+* **⚙️ Comportamento do Spring Boot:**
+
+    Pasta APPLICATION       ──> É Java puro (Sem anotações do Spring).
+                                 └─► O Spring não vê. Você PRECISA criar o @Bean na mão.
+
+### 💎 3ª Camada (Mais Interna / O Centro): `domain`
+É o núcleo absoluto do seu software. Aqui ficam as regras de negócio mais puras e os modelos de dados que definem o que o seu sistema é. O domínio não depende de tecnologias ou frameworks externos.
+* **O que tem nela (Java):** `Transaction.java` (Entidade pura do core) e `DashboardReport.java`.
+* **O que tem nela (Kotlin):** `Transaction.kt` (Modelo de dados espelhado/suporte para o motor Kotlin).
+* **⚙️ Comportamento do Spring Boot:**
+
+    Pastas de DOMAIN         ──> É Código 100% Puro e Independente.
+                                 └─► O Spring NÃO CONHECE, NÃO INJETA e NUNCA DEVE TOCAR AQUI.
+
+---
+
+## 🧅 A Visualização em Cebola Híbrida
+
+Se cortássemos o seu projeto híbrido ao meio, você veria as estruturas organizadas exatamente assim:
+
+```plaintext
+┌────────────────────────────────────────────────────────────────────────┐
+│ 1. INFRASTRUCTURE (A Casca Extrema)                                   │
+│    [Java: Controller] ──> [Java: Gemini] ──> [Kotlin: Coroutines]     │
+│                                                     │                  │
+│    ┌────────────────────────────────────────────────┼─────────────┐    │
+│    │ 2. APPLICATION (O Fluxo / Casos de Uso)        ▼             │    │
+│    │    [Java: TransactionService] ──> [PostgreSQL]               │    │
+│    │                                                              │    │
+│    │    ┌────────────────────────────────────────────────────┐    │    │
+│    │    │ 3. DOMAIN (O Coração Puro)                         │    │    │
+│    │    │    [Java: Transaction]  <───>  [Kotlin: Transaction]│    │    │
+│    │    └────────────────────────────────────────────────────┘    │    │
+│    └──────────────────────────────────────────────────────────────┘    │
+└────────────────────────────────────────────────────────────────────────┘
 ```

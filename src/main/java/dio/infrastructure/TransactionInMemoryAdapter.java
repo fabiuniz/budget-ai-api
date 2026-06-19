@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
+import org.springframework.context.annotation.Profile;
 
 /**
  * Adaptador de Infraestrutura (Output Adapter).
@@ -16,6 +17,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * Dependencias do Spring.
  */
 @Repository
+@Profile("dev")
 public class TransactionInMemoryAdapter implements TransactionRepository {
 
     // Lista thread-safe simulando a tabela do banco de dados
