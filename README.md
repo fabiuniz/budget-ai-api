@@ -1,7 +1,7 @@
 <!--
 Tags: Fund, Dev, Skils, DevOps, DadosIA
 Label: 🎙️ Blueprint de Desenvolvimento Orientado por IA: Budget AI API
-Description: 🌟 Privado - API baseada em Arquitetura Hexagonal estrita e Java 21 para automação de transações financeiras pessoais via comandos de voz, integrada nativamente ao Google AI Studio (Gemini) e persistência em PostgreSQL estruturada via Docker.
+Description: 🌍 API baseada em Arquitetura Hexagonal estrita e Java 21 para automação de transações financeiras pessoais via comandos de voz, integrada nativamente ao Google AI Studio (Gemini) e persistência em PostgreSQL estruturada via Docker.
 technical_requirement: Java 21, Spring Boot 3.2.5, PostgreSQL, Docker, Docker Compose, Arquitetura Hexagonal (Ports & Adapters), Stream API, REST Client (RestTemplate), Multipart Files, Google AI Studio (Gemini API), Linux Terminal, Dotenv, Maven.
 path_hook: hookfigma.hook9, hookfigma.hook7, hookfigma.hook13, hookfigma.hook6, hookfigma.hook1
 -->
@@ -185,6 +185,7 @@ Ao finalizar a execução das classes, garanta que os seguintes comportamentos s
    Execute a chamada HTTP para verificar a agregação dinâmica em tempo real:
    
 ```bash
+    #apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
     curl -X GET http://localhost:8080/api/budget/dashboard
       *Retorno esperado:* Um payload JSON contendo as chaves numéricas estruturadas e computadas pela Stream API:
        {"totalIncome":500.00,"totalExpense":0,"balance":500.00}
@@ -196,8 +197,7 @@ Ao finalizar a execução das classes, garanta que os seguintes comportamentos s
     espeak -v pt-br "Gastei 50 reais de almoço hoje" -w uploads/teste.wav && lame -V2 uploads/teste.wav uploads/audio_real_50.mp3 && rm teste.wav
       *Retorno esperado:* um audio mp3 com o texto informado
 
-   kill -9 $(lsof -t -i:8080)
-   kill -9 $(lsof -t -i:8080) #Encerra à força processos travados na porta 8080 para evitar o erro Address already in use.
+   kill -9 $(lsof -t -i:8080) #(apt update && apt install -y lsof)Encerra à força processos travados na porta 8080 para evitar o erro Address already in use.
    export $(cat .env | xargs) && mvn spring-boot:run #Carrega as chaves secretas do arquivo .env diretamente para o escopo de execução do Maven
    export $(cat .env | xargs) && mvn spring-boot:run -Dspring-boot.run.jvmArguments="-Djava.net.preferIPv4Stack=true" #Forçamento de Pilha IPv4 (Correção de Conectividade)
    export $(cat .env | xargs) && mvn clean spring-boot:run -Dspring-boot.run.jvmArguments="-Djava.net.preferIPv4Stack=true" #icialização Limpa e Recompilação Total (Build Seguro)
@@ -290,4 +290,84 @@ Se cortássemos o seu projeto híbrido ao meio, você veria as estruturas organi
 │    │    └────────────────────────────────────────────────────┘    │    │
 │    └──────────────────────────────────────────────────────────────┘    │
 └────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│ 🌐 1. INFRASTRUCTURE (A Camada Externa / Conecta com o Mundo)                          │
+│                                                                                        │
+│   [Rotas Web / UI]                                   [Inteligência Artificial (Java)]  │
+│   • BudgetAiController.java ──(Injeta o Service)──┐  • BudgetAiEngine.java             │
+│   • index.html (Página Web estática)              │  • RunnerTesteIa.java              │
+│                                                   ▼                                    │
+│   ┌────────────────────────────────────────────────────────────────────────────────┐   │
+│   │ 🚪 2. APPLICATION (A Camada Gerencial / Contém os Casos de Uso)                │   │
+│   │                                                                                │   │
+│   │   ┌────────────────────────────────────────────────────────────────────────┐   │   │
+│   │   │ TransactionService (A Caixa Gerente)                                   │   │   │
+│   │   │                                                                        │   │   │
+│   │   │   ┌────────────────────────────────────────────────────────────────┐   │   │   │
+│   │   │   │ transactionRepository (A Interface Contida)                    │   │   │   │
+│   │   │   └───────────────────────▲────────────────────────────────────────┘   │   │   │
+│   │   │                           │                                            │   │   │
+│   │   │   Métodos de Negócio:     │ (Inversão de Controle)                     │   │   │
+│   │   │   • criarTransacao()      │                                            │   │   │
+│   │   │   • listarTodas()         │                                            │   │   │
+│   │   │   • obterRelatorioDashboard()                                          │   │   │
+│   │   └───────────────────────────┼────────────────────────────────────────────┘   │   │
+│   └───────────────────────────────┼────────────────────────────────────────────────┘   │
+│                                   │                                                    │
+│   [Persistência e Conexões]       │ (Quem assina o contrato da Interface)              │
+│   • TransactionInMemoryAdapter ───┤ (Se active=dev)                                    │
+│   • TransactionPostgresAdapter ───┴ (Se active=prod) ──► SpringPostgresRepository      │
+│                                                                 │                      │
+│                                                          (Mapeia)                      │
+│                                                                 ▼                      │
+│                                                         TransactionEntity.java         │
+│                                                                                        │
+│   [🚀 O Motor Assíncrono Paralelo (Kotlin)]                                           │
+│   • BudgetAnalysisService.kt ──(Usa Coroutines)──► Processa predições pesadas          │
+└───────────────────────────────────┬────────────────────────────────────────────────────┘
+                                    │
+                                    ▼ (Processam e geram dados puros)
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│ 💎 3. CORE DOMAIN (O Coração Absoluto / As Caixas Mais Internas)                       │
+│                                                                                        │
+│     [Java Pure Entities]                    [Kotlin Support Models]                    │
+│     • Transaction.java                      • Transaction.kt                           │
+│     • DashboardReport.java                                                             │
+└────────────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+```mermaid
+
+graph TB
+    subgraph  1. INFRASTRUCTURE [1. INFRASTRUCTURE - Camada Externa]
+        Controller[BudgetAiController.java]
+        Engine[BudgetAiEngine.java]
+        KotlinService[BudgetAnalysisService.kt]
+        InMemory[TransactionInMemoryAdapter.java]
+        Postgres[TransactionPostgresAdapter.java]
+    end
+
+    subgraph  2. APPLICATION [2. APPLICATION - Camada Gerencial]
+        Service[TransactionService.java]
+        RepoInterface[TransactionRepository.java]
+    end
+
+    subgraph  3. CORE DOMAIN [3. CORE DOMAIN - Núcleo Puro]
+        JavaDomain[Transaction.java / DashboardReport.java]
+        KotlinDomain[Transaction.kt]
+    end
+
+    %% Fluxos de dependência e injeção
+    Controller -->|Injeta| Service
+    Engine -->|Alimenta| Service
+    KotlinService -->|Consome| Service
+    
+    Service -->|Contém Interface| RepoInterface
+    Postgres -.->|Implementa contrato| RepoInterface
+    InMemory -.->|Implementa contrato| RepoInterface
+    
+    Service -->|Usa Modelos| JavaDomain
+    KotlinService -->|Usa Modelos| KotlinDomain
+
+    ```

@@ -31,11 +31,15 @@ public class BudgetAiController {
 
     @PostMapping("/voice")
     public ResponseEntity<String> processVoice(@RequestParam("file") MultipartFile file) {
-        System.out.println("[API-POST] Upload de áudio detectado: " + file.getOriginalFilename());
+        String nomeOriginal = file.getOriginalFilename();
+        System.out.println("[API-POST] Upload de áudio detectado: " + nomeOriginal);
 
         if (file.isEmpty()) {
             return ResponseEntity.badRequest().body("Erro: O arquivo de áudio enviado está vazio.");
         }
+
+        File arquivoParaProcessar = null;
+        File arquivoOriginalNoDisco = null;
 
         try {
             // Garante que a pasta 'uploads/' exista no disco rígido
@@ -44,17 +48,31 @@ public class BudgetAiController {
                 pastaDestino.mkdirs();
             }
 
-            // Grava o arquivo físico de áudio .mp3 no disco do Linux
-            File arquivoNoDisco = new File(UPLOAD_DIR + file.getOriginalFilename());
-            file.transferTo(arquivoNoDisco);
-            System.out.println("[API-POST] Arquivo gravado com sucesso no disco em: " + arquivoNoDisco.getAbsolutePath());
+            // Salva o arquivo original vindo do front (pode ser .webm, .ogg, .mp3)
+            arquivoOriginalNoDisco = new File(UPLOAD_DIR + nomeOriginal);
+            file.transferTo(arquivoOriginalNoDisco);
+            System.out.println("[API-POST] Arquivo original gravado: " + arquivoOriginalNoDisco.getAbsolutePath());
 
-            // Envia o arquivo gravado para o processamento real da inteligência artificial
-            String resultadoIA = aiEngine.processarAudioEIntencaoReal(arquivoNoDisco);
+            // Se o arquivo NÃO for MP3, fazemos a conversão via FFmpeg
+            if (nomeOriginal != null && !nomeOriginal.toLowerCase().endsWith(".mp3")) {
+                System.out.println("[CONVERSOR] Detectado arquivo não-MP3. Iniciando conversão via FFmpeg...");
+                
+                String nomeSemExtensao = nomeOriginal.substring(0, nomeOriginal.lastIndexOf("."));
+                File arquivoMp3Convertido = new File(UPLOAD_DIR + nomeSemExtensao + "_convertido.mp3");
+
+                // Executa a conversão chamando o FFmpeg do sistema operacional
+                converterParaMp3(arquivoOriginalNoDisco, arquivoMp3Convertido);
+                
+                // O arquivo que enviaremos para a IA será o novo MP3 gerado
+                arquivoParaProcessar = arquivoMp3Convertido;
+            } else {
+                // Se já for MP3, segue o fluxo normal
+                arquivoParaProcessar = arquivoOriginalNoDisco;
+            }
+
+            // Envia o arquivo correto (MP3) para o processamento real da IA
+            String resultadoIA = aiEngine.processarAudioEIntencaoReal(arquivoParaProcessar);
             
-            // =========================================================================
-            // 🌟 ÚNICO AJUSTE ADICIONADO: INTERCEPTA O ERRO TRATADO DO GOOGLE GEMINI
-            // =========================================================================
             if (resultadoIA.startsWith("ERRO_IA:")) {
                 String mensagemLimpa = resultadoIA.replace("ERRO_IA:", "").trim();
                 return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(mensagemLimpa);
@@ -62,11 +80,51 @@ public class BudgetAiController {
 
             return ResponseEntity.ok(resultadoIA);
 
-        } catch (IOException e) {
-            System.err.println("[API-POST] Falha crítica de I/O ao salvar no disco: " + e.getMessage());
+        } catch (Exception e) {
+            System.err.println("[API-POST] Falha crítica no processamento/conversão: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Erro interno ao gravar arquivo no disco rígido do servidor.");
+                    .body("Erro interno ao processar e converter o arquivo de áudio no servidor: " + e.getMessage());
+        } finally {
+            // [OPCIONAL] Boa prática para não entupir o HD do servidor: limpa os arquivos temporários se necessário
+            // Se quiser guardar o histórico no disco, comente as linhas abaixo
+            if (arquivoOriginalNoDisco != null && arquivoOriginalNoDisco.exists() && !arquivoOriginalNoDisco.equals(arquivoParaProcessar)) {
+                arquivoOriginalNoDisco.delete();
+            }
         }
+    }
+
+    /**
+     * Método auxiliar que invoca o FFmpeg instalado no Linux para converter qualquer áudio em MP3 padrão.
+     */
+    private void converterParaMp3(File input, File output) throws IOException, InterruptedException {
+        // Remove o arquivo de saída se ele já existir por algum resquício de teste anterior
+        if (output.exists()) {
+            output.delete();
+        }
+
+        // Comando FFmpeg: -i (input), -codec:a libmp3lame (encoder de mp3), -qscale:a 2 (alta qualidade VBR)
+        ProcessBuilder pb = new ProcessBuilder(
+            "ffmpeg", 
+            "-y", // Força a sobrescrever o arquivo de saída caso ele exista
+            "-i", input.getAbsolutePath(), 
+            "-vn", // Desativa processamento de vídeo (WebM tecnicamente é um contêiner de vídeo, isso ajuda o FFmpeg a focar só no áudio)
+            "-acodec", "libmp3lame", 
+            "-qscale:a", "2", 
+            output.getAbsolutePath()
+        );
+
+        // Redireciona mensagens de erro do processo para o console do Spring Boot para debug
+        pb.redirectErrorStream(true);
+        Process processo = pb.start();
+
+        // Aguarda a finalização da conversão com timeout ou até o fim do processo
+        int exitCode = processo.waitFor();
+        
+        if (exitCode != 0) {
+            throw new IOException("O FFmpeg falhou ao converter o áudio. Código de saída: " + exitCode);
+        }
+        
+        System.out.println("[CONVERSOR] Conversão concluída com sucesso: " + output.getName());
     }
 
     @GetMapping("/transactions")
