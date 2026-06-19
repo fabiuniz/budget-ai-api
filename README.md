@@ -49,7 +49,7 @@ O projeto deve respeitar rigidamente a seguinte árvore sob a raiz `/home/userln
         │       │   │   └── TransactionService.java
         │       │   └── output/
         │       │       └── TransactionRepository.java
-        │       ├── domain/
+        │       ├── domain/ 🆕 Camada de Alto Nível (Independente)
         │       │   ├── DashboardReport.java
         │       │   └── Transaction.java
         │       └── infrastructure/
@@ -188,18 +188,20 @@ Ao finalizar a execução das classes, garanta que os seguintes comportamentos s
       *Retorno esperado:* Um payload JSON contendo as chaves numéricas estruturadas e computadas pela Stream API:
        {"totalIncome":500.00,"totalExpense":0,"balance":500.00}
 
-    curl -X POST -F "file=@audio_real.mp3" "http://localhost:8080/api/budget/voice"
+    curl -X POST -F "file=@uploads/audio_real_50.mp3" "http://localhost:8080/api/budget/voice"
       *Retorno esperado:* Uma string contendo respostas computadas pela Stream API:
         Sucesso! Áudio interpretado pelo Google AI Studio e registrado. ID: 4 | Tipo: INCOMEuserlnx@vmlinuxd:~/docker/script_docker/java-ia/budget-ai-api$ 
 
-    espeak -v pt-br "Recebi cem reais de aluguel hoje" -w teste.wav && lame -V2 teste.wav uploads/audio_real.mp3 && rm teste.wav
+    espeak -v pt-br "Gastei 50 reais de almoço hoje" -w uploads/teste.wav && lame -V2 uploads/teste.wav uploads/audio_real_50.mp3 && rm teste.wav
       *Retorno esperado:* um audio mp3 com o texto informado
 
    kill -9 $(lsof -t -i:8080)
-   export $(cat .env | xargs) && mvn spring-boot:run
-   export $(cat .env | xargs) && mvn spring-boot:run -Dspring-boot.run.jvmArguments="-Djava.net.preferIPv4Stack=true"
+   kill -9 $(lsof -t -i:8080) #Encerra à força processos travados na porta 8080 para evitar o erro Address already in use.
+   export $(cat .env | xargs) && mvn spring-boot:run #Carrega as chaves secretas do arquivo .env diretamente para o escopo de execução do Maven
+   export $(cat .env | xargs) && mvn spring-boot:run -Dspring-boot.run.jvmArguments="-Djava.net.preferIPv4Stack=true" #Forçamento de Pilha IPv4 (Correção de Conectividade)
+   export $(cat .env | xargs) && mvn clean spring-boot:run -Dspring-boot.run.jvmArguments="-Djava.net.preferIPv4Stack=true" #icialização Limpa e Recompilação Total (Build Seguro)
 ```
-3. **Para o Gemini funcionar adicione:**
+4. **Para o Gemini funcionar adicione:**
 ```bash
 nano /etc/resolv.conf
 nameserver 8.8.8.8
