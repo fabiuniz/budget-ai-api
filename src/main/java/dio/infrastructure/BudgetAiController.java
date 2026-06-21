@@ -12,21 +12,24 @@ import java.io.IOException;
 import java.util.List;
 
 import dio.domain.DashboardReport;
+import io.awspring.cloud.sqs.operations.SqsTemplate;
 
 @RestController
 @RequestMapping("/api/budget")
 @CrossOrigin(origins = "*")
 public class BudgetAiController {
 
-    private final BudgetAiEngine aiEngine;
+    // Remova ou mantenha a aiEngine dependendo se ainda usará chamadas diretas em outro lugar.
+    // private final BudgetAiEngine aiEngine; 
+    
     private final TransactionService transactionService;
+    private final SqsTemplate sqsTemplate;
 
-    // Pasta onde os áudios reais enviados via cURL/Upload vão ficar salvos fisicamente no seu Linux
     private static final String UPLOAD_DIR = "/home/userlnx/docker/script_docker/java-ia/budget-ai-api/uploads/";
 
-    public BudgetAiController(BudgetAiEngine aiEngine, TransactionService transactionService) {
-        this.aiEngine = aiEngine;
+    public BudgetAiController(TransactionService transactionService, SqsTemplate sqsTemplate) {
         this.transactionService = transactionService;
+        this.sqsTemplate = sqsTemplate;
     }
 
     @PostMapping("/voice")
@@ -42,55 +45,38 @@ public class BudgetAiController {
         File arquivoOriginalNoDisco = null;
 
         try {
-            // Garante que a pasta 'uploads/' exista no disco rígido
             File pastaDestino = new File(UPLOAD_DIR);
             if (!pastaDestino.exists()) {
                 pastaDestino.mkdirs();
             }
 
-            // Salva o arquivo original vindo do front (pode ser .webm, .ogg, .mp3)
             arquivoOriginalNoDisco = new File(UPLOAD_DIR + nomeOriginal);
             file.transferTo(arquivoOriginalNoDisco);
             System.out.println("[API-POST] Arquivo original gravado: " + arquivoOriginalNoDisco.getAbsolutePath());
 
-            // Se o arquivo NÃO for MP3, fazemos a conversão via FFmpeg
             if (nomeOriginal != null && !nomeOriginal.toLowerCase().endsWith(".mp3")) {
                 System.out.println("[CONVERSOR] Detectado arquivo não-MP3. Iniciando conversão via FFmpeg...");
-                
                 String nomeSemExtensao = nomeOriginal.substring(0, nomeOriginal.lastIndexOf("."));
                 File arquivoMp3Convertido = new File(UPLOAD_DIR + nomeSemExtensao + "_convertido.mp3");
 
-                // Executa a conversão chamando o FFmpeg do sistema operacional
                 converterParaMp3(arquivoOriginalNoDisco, arquivoMp3Convertido);
-                
-                // O arquivo que enviaremos para a IA será o novo MP3 gerado
                 arquivoParaProcessar = arquivoMp3Convertido;
             } else {
-                // Se já for MP3, segue o fluxo normal
                 arquivoParaProcessar = arquivoOriginalNoDisco;
             }
 
-            // Envia o arquivo correto (MP3) para o processamento real da IA
-            String resultadoIA = aiEngine.processarAudioEIntencaoReal(arquivoParaProcessar);
+            String caminhoArquivo = arquivoParaProcessar.getAbsolutePath();
+            System.out.println("[API-POST] Enfileirando arquivo para processamento da IA: " + caminhoArquivo);
             
-            if (resultadoIA.startsWith("ERRO_IA:")) {
-                String mensagemLimpa = resultadoIA.replace("ERRO_IA:", "").trim();
-                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(mensagemLimpa);
-            }
+            sqsTemplate.send(to -> to.queue("fila-audios-processar").payload(caminhoArquivo));
 
-            return ResponseEntity.ok(resultadoIA);
+            return ResponseEntity.accepted().body("Áudio recebido com sucesso! O processamento por IA iniciou em segundo plano.");
 
         } catch (Exception e) {
-            System.err.println("[API-POST] Falha crítica no processamento/conversão: " + e.getMessage());
+            System.err.println("[API-POST] Falha crítica: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Erro interno ao processar e converter o arquivo de áudio no servidor: " + e.getMessage());
-        } finally {
-            // [OPCIONAL] Boa prática para não entupir o HD do servidor: limpa os arquivos temporários se necessário
-            // Se quiser guardar o histórico no disco, comente as linhas abaixo
-            if (arquivoOriginalNoDisco != null && arquivoOriginalNoDisco.exists() && !arquivoOriginalNoDisco.equals(arquivoParaProcessar)) {
-                arquivoOriginalNoDisco.delete();
-            }
-        }
+                    .body("Erro interno ao receber o arquivo: " + e.getMessage());
+        }     
     }
 
     /**

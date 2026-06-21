@@ -13,6 +13,7 @@ import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.time.LocalDateTime;
 import java.util.*;
+import kotlin.coroutines.EmptyCoroutineContext;
 
 @Component
 public class BudgetAiEngine {
@@ -62,7 +63,6 @@ public class BudgetAiEngine {
             String textoJsonDaIa = extrairTextoDaResposta(response.getBody());
             System.out.println("[IA-ENGINE] Resposta estruturada recebida da IA: " + textoJsonDaIa);
 
-            // 🌟 CORREÇÃO AQUI: Mudado de "ejecutar" para "executar" com X
             return executarToolCalling(textoJsonDaIa);
 
         } catch (IOException e) {
@@ -123,11 +123,12 @@ public class BudgetAiEngine {
         try {
             System.out.println("[IA-ENGINE] [INTEROP] Chamando o motor assíncrono do Kotlin com Coroutines...");
             dio.infrastructure.AnaliseResultado resultadoKotlin = kotlinx.coroutines.BuildersKt.runBlocking(
-                    null,
+                    EmptyCoroutineContext.INSTANCE,
                     (scope, continuation) -> budgetAnalysisService.processarAnalisePreditiva(description, valorBruto, continuation)
             );
-            System.out.println("[IA-ENGINE] Resposta do Kotlin recebida com sucesso!");
-            if (categoriaFinal.isEmpty()) {
+            
+            System.out.println("[IA-ENGINE] Resposta do Kotlin recebida com sucesso! Categoria: " + resultadoKotlin.getCategoria());
+            if (resultadoKotlin.getCategoria() != null && !resultadoKotlin.getCategoria().isEmpty()) {
                 categoriaFinal = resultadoKotlin.getCategoria();
             }
         } catch (Exception e) {

@@ -65,6 +65,12 @@
             <artifactId>kotlinx-coroutines-core-jvm</artifactId>
             <version>1.7.3</version>
         </dependency>
+
+        <dependency>
+            <groupId>io.awspring.cloud</groupId>
+            <artifactId>spring-cloud-aws-starter-sqs</artifactId>
+            <version>3.0.2</version>
+        </dependency>
     </dependencies>
 
     <build>

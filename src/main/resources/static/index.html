@@ -593,8 +593,8 @@
 
             if (!response.ok) throw new Error('O motor de IA não conseguiu interpretar a mensagem.');
 
-            alertBox.className = 'status-message success';
-            alertBox.textContent = 'Sucesso! Transação gravada e salva no banco de dados.';
+            alertBox.className = 'status-message loading'; // Mantém o estado visual de processamento
+            alertBox.textContent = 'Áudio recebido! A IA está processando em segundo plano. Atualize o histórico em instantes.';
 
             // Limpa os campos após sucesso
             fileInput.value = '';

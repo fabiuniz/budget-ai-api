@@ -1,8 +1,8 @@
 <!--
-Tags: Fund, Dev, Skils, DevOps, DadosIA
+Tags: Fund, Dev, Skills, DevOps, DadosIA
 Label: 🎙️ Blueprint de Desenvolvimento Orientado por IA: Budget AI API
-Description: 🌍 API baseada em Arquitetura Hexagonal estrita e Java 21 para automação de transações financeiras pessoais via comandos de voz, integrada nativamente ao Google AI Studio (Gemini) e persistência em PostgreSQL estruturada via Docker.
-technical_requirement: Java 21, Spring Boot 3.2.5, PostgreSQL, Docker, Docker Compose, Arquitetura Hexagonal (Ports & Adapters), Stream API, REST Client (RestTemplate), Multipart Files, Google AI Studio (Gemini API), Linux Terminal, Dotenv, Maven.
+Description: 🌍 API baseada em Arquitetura Hexagonal estrita e Java 21 / Kotlin para automação de transações financeiras pessoais via comandos de voz, integrada nativamente ao Google AI Studio (Gemini) e persistência em PostgreSQL estruturada via Docker.
+technical_requirement: Java 21, Kotlin 1.9+, Spring Boot 3.2.5, PostgreSQL, AWS SQS (Mensageria), LocalStack, Docker, Docker Compose, Arquitetura Hexagonal (Ports & Adapters), Coroutines, Stream API, REST Client, Google AI Studio (Gemini API), FFmpeg.
 path_hook: hookfigma.hook9, hookfigma.hook7, hookfigma.hook13, hookfigma.hook6, hookfigma.hook1
 -->
 
@@ -56,6 +56,7 @@ O projeto deve respeitar rigidamente a seguinte árvore sob a raiz `/home/userln
         │       └── infrastructure/
         │           ├── BudgetAiController.java
         │           ├── BudgetAiEngine.java
+                    ├── BudgetSqsListener.java           🆕 (Ouvinte assíncrono do AWS SQS)
         │           ├── RunnerTesteIa.java
         │           ├── SpringPostgresRepository.java
         │           ├── TransactionEntity.java
@@ -150,7 +151,7 @@ Mapeie os parâmetros operacionais do Spring Boot e do ecossistema de banco de d
 **Caminho:** `src/main/java/dio/infrastructure/BudgetAiEngine.java`
 - Classe anotada com `@Component`. Envia o arquivo de áudio local convertido em **Base64** em um payload REST estruturado para a API do Gemini via `RestTemplate`.
 - **Injeção de Dependência:** Deve receber no construtor único tanto o `TransactionService` (Core/Java) quanto o `BudgetAnalysisService` (Infra/Kotlin).
-- **executarToolCalling(String)**: Limpa marcações markdown e intercepta o fluxo antes de salvar. Aciona a ponte de interoperabilidade da JVM utilizando o executor de bloqueio seguro de threads do ecossistema do Kotlin: kotlinx.coroutines.BuildersKt.runBlocking. Passa obrigatoriamente o EmptyCoroutineContext.INSTANCE no primeiro parâmetro para blindar o interop e transfere os parâmetros extraídos da LLM para a coroutine suspensa do Kotlin, captura o objeto AnaliseResultado gerado, adota fallbacks inteligentes baseados em Null Safety caso a descrição venha nula, e transfere a entidade limpa e higienizada para a persistência definitiva no Core.
+- **executarToolCalling(String)**: Limpa marcações markdown e intercepta o fluxo antes de salvar. Aciona a ponte de interoperabilidade da JVM utilizando o executor de bloqueio seguro de threads do ecossistema do Kotlin: `kotlinx.coroutines.BuildersKt.runBlocking`. Passa **obrigatoriamente** o `EmptyCoroutineContext.INSTANCE` no primeiro parâmetro para blindar o interop contra erros de contexto nulo, transfere os parâmetros extraídos da LLM para a coroutine suspensa do Kotlin, captura o objeto `AnaliseResultado` gerado, adota fallbacks inteligentes baseados em Null Safety caso a descrição venha nula, e transfere a entidade limpa e higienizada para a persistência definitiva no Core.
 
 ### Passo 7: O Inicializador do Container e Injeção de Ambiente (.env)
 **Caminho:** `src/main/java/dio/BudgetAiApiApplication.java`
@@ -161,9 +162,15 @@ Mapeie os parâmetros operacionais do Spring Boot e do ecossistema de banco de d
 ### Passo 8: O Adaptador de Entrada Web (Controlador REST com Painel)
 **Caminho:** `src/main/java/dio/infrastructure/BudgetAiController.java`
 - Controlador `@RestController` mapeando a rota base `/api/budget`.
-- **POST `/voice`**: Processa uploads via `MultipartFile`, salvando os arquivos físicos na pasta local `/uploads/` e disparando o motor de IA.
+- **POST `/voice`**: Processa uploads via `MultipartFile`, salvando os arquivos físicos na pasta local `/uploads/`. Em vez de travar a requisição HTTP chamando a IA, executa a conversão rápida de áudio usando o pipeline do FFmpeg, enfileira o caminho do arquivo convertido no AWS SQS de forma assíncrona usando `sqsTemplate.send()` e responde imediatamente com `HTTP 202 Accepted`.
 - **GET `/transactions`**: Expõe a listagem pura das transações salvas.
 - **GET `/dashboard`**: Expõe os dados consolidados analíticos obtidos através da chamada do caso de uso `transactionService.obterRelatorioDashboard()`.
+
+### Passo 8.1: O Adaptador de Mensageria (SQS Consumer)
+**Caminho:** `src/main/java/dio/infrastructure/BudgetSqsListener.java`
+- Classe anotada com `@Component` gerenciada pelo Spring Boot.
+- Responsável por escutar ativamente a fila usando a anotação `@SqsListener("fila-audios-processar")`.
+- Captura a mensagem contendo o caminho do arquivo, invoca de forma assíncrona o método `processarAudioEIntencaoReal(File)` do `BudgetAiEngine` para realizar a comunicação com o Gemini e persiste o resultado final de forma segura, limpando o arquivo temporário do disco após o sucesso.
 
 ### Passo 9: Classe de Simulação Alternativa
 **Caminho:** `src/main/java/dio/MainSimulacao.java`
@@ -186,6 +193,7 @@ Ao finalizar a execução das classes, garanta que os seguintes comportamentos s
    
 ```bash
     #apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
+    # Obter relatório consolidado do dashboard via Stream API
     curl -X GET http://localhost:8080/api/budget/dashboard
       *Retorno esperado:* Um payload JSON contendo as chaves numéricas estruturadas e computadas pela Stream API:
        {"totalIncome":500.00,"totalExpense":0,"balance":500.00}
@@ -194,13 +202,22 @@ Ao finalizar a execução das classes, garanta que os seguintes comportamentos s
       *Retorno esperado:* Uma string contendo respostas computadas pela Stream API:
         Sucesso! Áudio interpretado pelo Google AI Studio e registrado. ID: 4 | Tipo: INCOMEuserlnx@vmlinuxd:~/docker/script_docker/java-ia/budget-ai-api$ 
 
+    # Gerar áudio real de teste local via terminal e enviar ao pipeline
     espeak -v pt-br "Gastei 50 reais de almoço hoje" -w uploads/teste.wav && lame -V2 uploads/teste.wav uploads/audio_real_50.mp3 && rm teste.wav
       *Retorno esperado:* um audio mp3 com o texto informado
 
+   # Encerra à força processos travados na porta 8080 para evitar Address already in use
    kill -9 $(lsof -t -i:8080) #(apt update && apt install -y lsof)Encerra à força processos travados na porta 8080 para evitar o erro Address already in use.
+   # Inicialização limpa, carregando as chaves do .env e forçando a pilha IPv4
    export $(cat .env | xargs) && mvn spring-boot:run #Carrega as chaves secretas do arquivo .env diretamente para o escopo de execução do Maven
    export $(cat .env | xargs) && mvn spring-boot:run -Dspring-boot.run.jvmArguments="-Djava.net.preferIPv4Stack=true" #Forçamento de Pilha IPv4 (Correção de Conectividade)
    export $(cat .env | xargs) && mvn clean spring-boot:run -Dspring-boot.run.jvmArguments="-Djava.net.preferIPv4Stack=true" #icialização Limpa e Recompilação Total (Build Seguro)
+
+   aws sqs create-queue \
+      --queue-name fila-audios-processar \
+      --endpoint-url=http://localhost:4566 \
+      --region sa-east-1 \
+      --profile default
 ```
 4. **Para o Gemini funcionar adicione:**
 ```bash
@@ -230,13 +247,20 @@ Manipular payloads voláteis vindos de motores de IA e áudio é um desafio para
 
 ```mermaid
 graph TD
-    A[Front-end / cURL] -->|POST /voice| B(BudgetAiController - Java)
-    B -->|Processar Áudio| C(BudgetAiEngine - Java)
-    C -->|Bypass / Gemini Response| D{runBlocking Interop}
-    D -->|Injeta EmptyCoroutineContext| E[BudgetAnalysisService - Kotlin]
-    E -->|suspend function Coroutine| F[Pipeline Preditivo Assíncrono]
-    F -->|Retorna AnaliseResultado| D
-    D -->|Persistir Dados via JPA| G[PostgreSQL - Docker]
+    A[Front-end / cURL] -->|POST /voice| B(BudgetAiController)
+    B -->|1. Transfere & Converte para MP3| FFmpeg[FFmpeg Pipeline]
+    FFmpeg -->|2. Envia caminho do arquivo| SQS[(AWS SQS: fila-audios-processar)]
+    B -->|3. Resposta Imediata HTTP 202| A
+    
+    subgraph Assíncrono [Processamento em Segundo Plano]
+        SQS -->|4. Consome Mensagem| Consumer[Queue Consumer]
+        Consumer -->|5. Executa Engine| C(BudgetAiEngine)
+        C -->|6. Chamada REST Base64| Gemini{API Gemini}
+        Gemini -->|7. Sucesso 200 OK| D{runBlocking Interop}
+        D -->|8. Análise Preditiva Coroutine| E[BudgetAnalysisService]
+        D -->|9. Salva no Banco| G[(PostgreSQL)]
+        G -->|10. Deleta MP3 temporário| Disk[Limpeza do Disco]
+    end
 ```
 
 ## 🏛️ A Ordem das Camadas (De Fora para Dentro - Hexagonal)
@@ -370,4 +394,4 @@ graph TB
     Service -->|Usa Modelos| JavaDomain
     KotlinService -->|Usa Modelos| KotlinDomain
 
-    ```
+```
