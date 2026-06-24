@@ -6,9 +6,6 @@ target/
 
 ### IntelliJ IDEA ###
 .idea/modules.xml
-.idea/jarRepositories.xml
-.idea/compiler.xml
-.idea/libraries/
 *.iws
 *.iml
 *.ipr
@@ -37,3 +34,12 @@ build/
 
 ### Mac OS ###
 .DS_Store.env
+
+# Runtime / Arquivos de Mídia locais
+uploads/
+*.mp3
+*.webm
+*.wav
+
+# Variáveis de ambiente sensíveis
+.env

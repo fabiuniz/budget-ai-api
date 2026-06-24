@@ -212,6 +212,9 @@ Ao finalizar a execução das classes, garanta que os seguintes comportamentos s
    export $(cat .env | xargs) && mvn spring-boot:run #Carrega as chaves secretas do arquivo .env diretamente para o escopo de execução do Maven
    export $(cat .env | xargs) && mvn spring-boot:run -Dspring-boot.run.jvmArguments="-Djava.net.preferIPv4Stack=true" #Forçamento de Pilha IPv4 (Correção de Conectividade)
    export $(cat .env | xargs) && mvn clean spring-boot:run -Dspring-boot.run.jvmArguments="-Djava.net.preferIPv4Stack=true" #icialização Limpa e Recompilação Total (Build Seguro)
+   # Testes
+   mvn test-compile spring-boot:run -Dspring-boot.run.mainClass="dio.simulacao.MainSimulacao"   
+   mvn test-compile exec:java -Dexec.classpathScope="test" -Dexec.mainClass="dio.Main"
 
    aws sqs create-queue \
       --queue-name fila-audios-processar \
