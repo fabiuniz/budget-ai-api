@@ -25,6 +25,12 @@ Você atuará como um Engenheiro de Software Sênior especialista em Java 21+, S
 3. **Integração Multimodal Real:** As capacidades de IA devem ser executadas através de chamadas HTTP/REST reais para a API do Google AI Studio, enviando o binário do áudio em formato Base64.
 4. **Estabilidade de Compilação:** Cada arquivo gerado deve conter todos os imports necessários. Não use pseudocódigo ou marcadores de omissão como `// restante do código aqui`.
 
+## 🚀 Diferenciais Sênior Implementados
+* **Concorrência Híbrida (JVM Modern):** Orquestração de I/O de rede via **Java 21 Virtual Threads** e processamento analítico com **Kotlin Coroutines**.
+* **Arquitetura Orientada a Eventos:** Ingestão de mídias resiliente utilizando **Apache Kafka** e **AWS SQS**.
+* **IA Native (Tool Calling):** Integração com Google Gemini Flash para extração de intenções textuais e estruturação de payloads via Jackson ObjectMapper (Tipagem Forte).
+* **Resiliência e Observabilidade:** Blindagem de chamadas externas com **Circuit Breaker (Resilience4j)** e exposição de métricas via **Spring Actuator + Micrometer**.
+
 ---
 
 ## 🏗️ 1. Estrutura de Diretórios e Pacotes
@@ -56,12 +62,13 @@ O projeto deve respeitar rigidamente a seguinte árvore sob a raiz `/home/userln
         │       └── infrastructure/
         │           ├── BudgetAiController.java
         │           ├── BudgetAiEngine.java
-                    ├── BudgetSqsListener.java           🆕 (Ouvinte assíncrono do AWS SQS)
+        │           ├── BudgetSqsListener.java           🆕 (Ouvinte assíncrono do AWS SQS)
         │           ├── RunnerTesteIa.java
         │           ├── SpringPostgresRepository.java
         │           ├── TransactionEntity.java
         │           ├── TransactionInMemoryAdapter.java
-        │           └── TransactionPostgresAdapter.java
+        │           ├── TransactionPostgresAdapter.java
+        │           └── (Configurações de Circuit Breaker, Kafka e Metrics)
         ├── kotlin/                                 🆕 (Source Root para compilação do ecossistema Kotlin)
         │   └── dio/
         │       ├── domain/
@@ -198,6 +205,7 @@ Ao finalizar a execução das classes, garanta que os seguintes comportamentos s
       *Retorno esperado:* Um payload JSON contendo as chaves numéricas estruturadas e computadas pela Stream API:
        {"totalIncome":500.00,"totalExpense":0,"balance":500.00}
 
+    # Postar audio para IA
     curl -X POST -F "file=@uploads/audio_real_50.mp3" "http://localhost:8080/api/budget/voice"
       *Retorno esperado:* Uma string contendo respostas computadas pela Stream API:
         Sucesso! Áudio interpretado pelo Google AI Studio e registrado. ID: 4 | Tipo: INCOMEuserlnx@vmlinuxd:~/docker/script_docker/java-ia/budget-ai-api$ 
@@ -215,15 +223,34 @@ Ao finalizar a execução das classes, garanta que os seguintes comportamentos s
    # Testes
    mvn test-compile spring-boot:run -Dspring-boot.run.mainClass="dio.simulacao.MainSimulacao"   
    mvn test-compile exec:java -Dexec.classpathScope="test" -Dexec.mainClass="dio.Main"
-
-   aws sqs create-queue \
-      --queue-name fila-audios-processar \
+   # Verificar Fila de mesageria
+   docker exec -it -e AWS_ACCESS_KEY_ID=mock_key -e AWS_SECRET_ACCESS_KEY=mock_secret budget-sqs-local aws sqs get-queue-attributes \
+      --queue-url "http://sqs.sa-east-1.localhost.localstack.cloud:4566/000000000000/fila-audios-processar" \
+      --attribute-names ApproximateNumberOfMessages ApproximateNumberOfMessagesNotVisible \
       --endpoint-url=http://localhost:4566 \
-      --region sa-east-1 \
-      --profile default
+      --region sa-east-1
 ```
-4. **Para o Gemini funcionar adicione:**
+4. **Configurando IntelliJ Idea: **
+        (budget-ai-api/.idea/workspace.xml)
 ```bash
+    <component name="KotlinCompilerWorkspaceSettings">
+      <option name="preciseIncrementalEnabled" value="false" />
+    </component>
+    <component name="MavenRunner">
+      <option name="delegateBuildToMaven" value="true" />
+    </component>
+```
+        (budget-ai-api/.idea\runConfigurations\BudgetAiApiApplication.xml)
+```bash
+    <option name="ACTIVE_PROFILES" value="prod" />
+```
+5. **Para o Gemini funcionar adicione:**
+```bash
+nano /etc/dhcpcd.conf
+static domain_name_servers=8.8.8.8 8.8.4.4 192.168.1.1
+
+ou
+
 nano /etc/resolv.conf
 nameserver 8.8.8.8
 nameserver 8.8.4.4
@@ -304,18 +331,32 @@ Se cortássemos o seu projeto híbrido ao meio, você veria as estruturas organi
 
 ```plaintext
 ┌────────────────────────────────────────────────────────────────────────┐
-│ 1. INFRASTRUCTURE (A Casca Extrema)                                   │
-│    [Java: Controller] ──> [Java: Gemini] ──> [Kotlin: Coroutines]     │
-│                                                     │                  │
-│    ┌────────────────────────────────────────────────┼─────────────┐    │
-│    │ 2. APPLICATION (O Fluxo / Casos de Uso)        ▼             │    │
-│    │    [Java: TransactionService] ──> [PostgreSQL]               │    │
-│    │                                                              │    │
-│    │    ┌────────────────────────────────────────────────────┐    │    │
-│    │    │ 3. DOMAIN (O Coração Puro)                         │    │    │
-│    │    │    [Java: Transaction]  <───>  [Kotlin: Transaction]│    │    │
-│    │    └────────────────────────────────────────────────────┘    │    │
-│    └──────────────────────────────────────────────────────────────┘    │
+│ 1. INFRASTRUCTURE (A Casca Extrema - Robusta e Resiliente)             │
+│                                                                        │
+│   [HTTP / MVC] ──> BudgetAiController (Java 21 Virtual Threads)        │
+│                         │                                              │
+│                         ▼                                              │
+│   [Mensageria] ──> [AWS SQS / Kafka] ──> BudgetSqsListener             │
+│                                               │                        │
+│                                               ▼                        │
+│   [IA Studio]  ──> BudgetAiEngine <───> [🛡️ Resilience4j CB]           │
+│                         │                                              │
+│                         ▼                                              │
+│   [🧠 Predict] ──> BudgetAnalysisService (Kotlin Coroutines)           │
+│                                                                        │
+│   [📊 Metrics] ──> Spring Actuator + Micrometer Prometheus             │
+│                                                                        │
+│   ┌────────────────────────────────────────────────────────────────┐   │
+│   │ 2. APPLICATION (Regras de Negócio Puras e Casos de Uso)        │   │
+│   │                                                                │   │
+│   │   [Java: TransactionService] ──► [PostgreSQL Adapter]          │   │
+│   │                                                                │   │
+│   │   ┌────────────────────────────────────────────────────────┐   │   │
+│   │   │ 3. DOMAIN (O Coração Absoluto - Totalmente Isolado)    │   │   │
+│   │   │                                                        │   │   │
+│   │   │   [Java: Transaction]  <───>  [Kotlin: Transaction]    │   │   │
+│   │   └────────────────────────────────────────────────────────┘   │   │
+│   └────────────────────────────────────────────────────────────────┘   │
 └────────────────────────────────────────────────────────────────────────┘
 
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
@@ -367,34 +408,48 @@ Se cortássemos o seu projeto híbrido ao meio, você veria as estruturas organi
 ```mermaid
 
 graph TB
-    subgraph  1. INFRASTRUCTURE [1. INFRASTRUCTURE - Camada Externa]
-        Controller[BudgetAiController.java]
-        Engine[BudgetAiEngine.java]
-        KotlinService[BudgetAnalysisService.kt]
-        InMemory[TransactionInMemoryAdapter.java]
+    subgraph 1. INFRASTRUCTURE [1. INFRASTRUCTURE - Ecossistema Periférico]
+        Controller[BudgetAiController.java <br><i>Virtual Threads</i>]
+        SQS[(AWS SQS / Kafka Broker)]
+        Listener[BudgetSqsListener.java <br><i>Async Consumer</i>]
+        Engine[BudgetAiEngine.java <br><i>Jackson Parser & Records</i>]
+        CB{🛡️ Resilience4j <br>Circuit Breaker}
+        Actuator[📊 Spring Actuator <br>& Prometheus]
+        KotlinService[BudgetAnalysisService.kt <br><i>Kotlin Coroutines</i>]
         Postgres[TransactionPostgresAdapter.java]
     end
 
-    subgraph  2. APPLICATION [2. APPLICATION - Camada Gerencial]
+    subgraph 2. APPLICATION [2. APPLICATION - Casos de Uso Puros]
         Service[TransactionService.java]
         RepoInterface[TransactionRepository.java]
     end
 
-    subgraph  3. CORE DOMAIN [3. CORE DOMAIN - Núcleo Puro]
-        JavaDomain[Transaction.java / DashboardReport.java]
+    subgraph 3. CORE DOMAIN [3. CORE DOMAIN - Modelos de Negócio]
+        JavaDomain[Transaction.java <br> DashboardReport.java]
         KotlinDomain[Transaction.kt]
     end
 
-    %% Fluxos de dependência e injeção
-    Controller -->|Injeta| Service
-    Engine -->|Alimenta| Service
-    KotlinService -->|Consome| Service
+    %% Fluxo de Entrada Reativo
+    Controller -->|1. Enfileira Rápido| SQS
+    SQS -->|2. Consome em Background| Listener
+    Listener -->|3. Dispara Processamento| Engine
+    Engine <-->|4. Protegido por| CB
+    Engine -->|5. Executa Interop| KotlinService
     
-    Service -->|Contém Interface| RepoInterface
-    Postgres -.->|Implementa contrato| RepoInterface
-    InMemory -.->|Implementa contrato| RepoInterface
+    %% Pontes com o Core (Hexagonal)
+    Listener -->|6. Salva Transação| Service
+    KotlinService -->|Consome Lógica| Service
     
-    Service -->|Usa Modelos| JavaDomain
-    KotlinService -->|Usa Modelos| KotlinDomain
+    %% Inversão de Controle e Persistência
+    Service -->|Define Contrato| RepoInterface
+    Postgres -.->|Implementa Contrato| RepoInterface
+    
+    %% Amarração com o Domínio
+    Service -->|Usa| JavaDomain
+    KotlinService -->|Usa| KotlinDomain
+    
+    %% Observabilidade Transversal
+    Actuator -.->|Monitora| Controller
+    Actuator -.->|Monitora| Engine
 
 ```

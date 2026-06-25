@@ -1,5 +1,7 @@
 package dio.infrastructure;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import dio.application.input.TransactionService;
 import dio.domain.Transaction;
 import org.springframework.beans.factory.annotation.Value;
@@ -8,12 +10,11 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
 import java.io.File;
-import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.time.LocalDateTime;
 import java.util.*;
-import kotlin.coroutines.EmptyCoroutineContext;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 
 @Component
 public class BudgetAiEngine {
@@ -21,80 +22,66 @@ public class BudgetAiEngine {
     private final TransactionService transactionService;
     private final RestTemplate restTemplate;
     private final BudgetAnalysisService budgetAnalysisService;
+    private final ObjectMapper objectMapper;
 
     @Value("${google.ai.studio.api.key}")
     private String apiKey;
 
-    // URL oficial correta sem expor a chave como parâmetro de query
-    // Altere para o modelo correto sem o "1.5"
-    private static final String GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent";
+    //private static final String GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent";
+    private static final String GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
-    public BudgetAiEngine(TransactionService transactionService, BudgetAnalysisService budgetAnalysisService) {
+    // Record interno para tipagem forte do JSON retornado pela Inteligência Artificial
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record GeminiFinanceResponse(String description, BigDecimal amount, String type) {}
+
+    public BudgetAiEngine(TransactionService transactionService, BudgetAnalysisService budgetAnalysisService, ObjectMapper objectMapper) {
         this.transactionService = transactionService;
         this.budgetAnalysisService = budgetAnalysisService;
+        this.objectMapper = objectMapper;
         this.restTemplate = new RestTemplate();
     }
 
-    public String processarAudioEIntencaoReal(File arquivoAudio) {
-        System.out.println("[IA-ENGINE] Iniciando processamento real via Google AI Studio para: " + arquivoAudio.getName());
+    @CircuitBreaker(name = "geminiApi", fallbackMethod = "fallbackGemini")
+    public String processarAudioEIntencaoReal(File arquivoAudio) throws Exception {
+    
+        byte[] fileContent = Files.readAllBytes(arquivoAudio.toPath());
+        String audioBase64 = Base64.getEncoder().encodeToString(fileContent);
 
-        try {
-            byte[] fileContent = Files.readAllBytes(arquivoAudio.toPath());
-            String audioBase64 = Base64.getEncoder().encodeToString(fileContent);
+        String promptComando = "Analise o áudio anexado contendo uma movimentação financeira em português. " +
+                "Extraia as informações e retorne EXCLUSIVAMENTE um objeto JSON válido contendo os campos: " +
+                "'description' (texto), 'amount' (número decimal) e 'type' ('INCOME' ou 'EXPENSE'). " +
+                "Não use marcações markdown como ```json.";
 
-            String urlCompleta = GEMINI_API_URL;
-            String promptComando = "Analise o áudio anexado que contém uma movimentação financeira falada em português. " +
-                    "Extraia as informações e retorne OBRIGATORIAMENTE um objeto JSON puro, sem formatação markdown (sem ```json), " +
-                    "contendo os campos: 'description' (uma descrição curta e limpa do gasto/ganho), " +
-                    "'amount' (o valor numérico decimal) e 'type' (deve ser 'INCOME' se for entrada/ganho ou 'EXPENSE' se for saída/gasto).";
+        Map<String, Object> requestBody = mapiarRequestGemini(audioBase64, promptComando);
 
-            Map<String, Object> requestBody = mapiarRequestGemini(audioBase64, promptComando);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("X-goog-api-key", apiKey);
 
-            // Passando os Headers idênticos ao cURL oficial que funciona
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("X-goog-api-key", apiKey);
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+        
+        // Se a linha abaixo der erro 503, o Resilience4j captura o erro imediatamente!
+        ResponseEntity<Map> response = restTemplate.postForEntity(GEMINI_API_URL, entity, Map.class);
 
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
-
-            System.out.println("[IA-ENGINE] Enviando payload multimodal para o Gemini...");
-            ResponseEntity<Map> response = restTemplate.postForEntity(urlCompleta, entity, Map.class);
-
-            String textoJsonDaIa = extrairTextoDaResposta(response.getBody());
-            System.out.println("[IA-ENGINE] Resposta estruturada recebida da IA: " + textoJsonDaIa);
-
-            return executarToolCalling(textoJsonDaIa);
-
-        } catch (IOException e) {
-            System.err.println("[IA-ENGINE] Erro ao ler arquivo de áudio: " + e.getMessage());
-            return "ERRO_IA: Falha ao ler arquivo de áudio físico no servidor.";
-        } catch (Exception e) {
-            System.err.println("[IA-ENGINE] Erro na integração com Google AI Studio: " + e.getMessage());
-            if (e.getMessage() != null && e.getMessage().contains("503")) {
-               return "ERRO_IA: O servidor do Google Gemini está sobrecarregado devido à alta demanda global neste momento. Por favor, tente enviar o áudio novamente em alguns segundos.";
-            }
-            return "ERRO_IA: Falha ao processar IA no Google AI Studio. Detalhe: " + e.getMessage();
-        }
+        String textoJsonDaIa = extrairTextoDaResposta(response.getBody());
+        
+        return executarToolCalling(textoJsonDaIa);
+    }
+    public String fallbackGemini(File arquivoAudio, Throwable t) {
+        System.err.println("[CIRCUIT-BREAKER] Chamada para o Gemini bloqueada ou falhou. Motivo: " + t.getMessage());
+        return "ERRO_RESILIENCIA: O serviço de IA está temporariamente indisponível (Circuit Breaker Aberto). Sua requisição será reprocessada assim que o sistema estabilizar.";
     }
 
     private Map<String, Object> mapiarRequestGemini(String audioBase64, String prompt) {
-        Map<String, Object> partAudio = new HashMap<>();
-        Map<String, Object> inlineData = new HashMap<>();
-        inlineData.put("mimeType", "audio/mpeg");
-        inlineData.put("data", audioBase64);
-        partAudio.put("inlineData", inlineData);
-
-        Map<String, Object> partText = new HashMap<>();
-        partText.put("text", prompt);
-
-        Map<String, Object> content = new HashMap<>();
-        content.put("parts", Arrays.asList(partAudio, partText));
-
-        Map<String, Object> request = new HashMap<>();
-        request.put("contents", Collections.singletonList(content));
-        return request;
+        Map<String, Object> inlineData = Map.of("mimeType", "audio/mpeg", "data", audioBase64);
+        Map<String, Object> partAudio = Map.of("inlineData", inlineData);
+        Map<String, Object> partText = Map.of("text", prompt);
+        Map<String, Object> content = Map.of("parts", List.of(partAudio, partText));
+        
+        return Map.of("contents", Collections.singletonList(content));
     }
 
+    @SuppressWarnings("rawtypes")
     private String extrairTextoDaResposta(Map responseBody) {
         try {
             List candidates = (List) responseBody.get("candidates");
@@ -104,55 +91,47 @@ public class BudgetAiEngine {
             Map firstPart = (Map) parts.get(0);
             return (String) firstPart.get("text");
         } catch (Exception e) {
-            throw new RuntimeException("Não foi possível extrair o texto do payload de resposta do Gemini.", e);
+            throw new RuntimeException("Falha ao navegar na árvore estrutural de resposta do Gemini.", e);
         }
     }
 
     private String executarToolCalling(String jsonIa) {
-        String jsonLimpo = jsonIa.replace("```json", "").replace("```", "").trim();
+        // Limpeza segura usando Expressões Regulares
+        String jsonLimpo = jsonIa.replaceAll("```json|```", "").trim();
+        String categoriaFinal;
+        GeminiFinanceResponse dadosIa;
 
-        String description = buscarChaveJson(jsonLimpo, "description");
-        String amountStr = buscarChaveJson(jsonLimpo, "amount");
-        String type = buscarChaveJson(jsonLimpo, "type").toUpperCase();
-
-        BigDecimal valorBruto = amountStr.isEmpty() ? BigDecimal.ZERO : new BigDecimal(amountStr);
-
-        String categoriaFinal = description;
-
-        // Try/Catch adicionado para blindar a chamada do runBlocking do Kotlin contra InterruptedException
         try {
-            System.out.println("[IA-ENGINE] [INTEROP] Chamando o motor assíncrono do Kotlin com Coroutines...");
+            // Sênior approach: Usando Jackson para realizar o Parse estruturado e tipado
+            dadosIa = objectMapper.readValue(jsonLimpo, GeminiFinanceResponse.class);
+            categoriaFinal = dadosIa.description();
+        } catch (Exception e) {
+            System.err.println("[PARSER-FAIL] Falha ao converter JSON do Gemini para Record. Payload: " + jsonLimpo);
+            return "ERRO_PARSER: Payload gerado pela IA quebrou o contrato esperado.";
+        }
+
+        try {
+            // Executando interoperabilidade com as suspensões e escopos assíncronos do Kotlin Coroutines
             dio.infrastructure.AnaliseResultado resultadoKotlin = kotlinx.coroutines.BuildersKt.runBlocking(
-                    EmptyCoroutineContext.INSTANCE,
-                    (scope, continuation) -> budgetAnalysisService.processarAnalisePreditiva(description, valorBruto, continuation)
+                    kotlin.coroutines.EmptyCoroutineContext.INSTANCE,
+                    (scope, continuation) -> budgetAnalysisService.processarAnalisePreditiva(dadosIa.description(), dadosIa.amount(), continuation)
             );
             
-            System.out.println("[IA-ENGINE] Resposta do Kotlin recebida com sucesso! Categoria: " + resultadoKotlin.getCategoria());
             if (resultadoKotlin.getCategoria() != null && !resultadoKotlin.getCategoria().isEmpty()) {
                 categoriaFinal = resultadoKotlin.getCategoria();
             }
         } catch (Exception e) {
-            System.err.println("[IA-ENGINE] Erro ou interrupção ao executar rotina do Kotlin: " + e.getMessage());
+            System.err.println("[INTEROP-FAIL] Fallback ativado para o Core Kotlin: " + e.getMessage());
         }
 
         Transaction transaction = new Transaction();
-        transaction.setDescription(categoriaFinal.isEmpty() ? "CATEGORIA_DESCONHECIDA" : categoriaFinal);
-        transaction.setAmount(valorBruto);
-        transaction.setType(type.contains("INCOME") ? "INCOME" : "EXPENSE");
+        String descricaoOriginal = (dadosIa.description() != null) ? dadosIa.description() : "Sem descrição";
+        transaction.setDescription(descricaoOriginal);
+        transaction.setAmount(dadosIa.amount() != null ? dadosIa.amount() : BigDecimal.ZERO);
+        transaction.setType("INCOME".equalsIgnoreCase(dadosIa.type()) ? "INCOME" : "EXPENSE");
         transaction.setCreatedAt(LocalDateTime.now());
 
-        System.out.println("[IA-ENGINE] [TOOL CALLING ACTIVATED] Invocando Core da Aplicação...");
         Transaction cadastrada = transactionService.criarTransacao(transaction);
-
-        return "Sucesso! Áudio processado pelo pipeline híbrido Java/Kotlin. ID: " + cadastrada.getId();
-    }
-
-    private String buscarChaveJson(String json, String chave) {
-        int index = json.indexOf("\"" + chave + "\"");
-        if (index == -1) return "";
-        int start = json.indexOf(":", index) + 1;
-        int end = json.indexOf(",", start);
-        if (end == -1) end = json.indexOf("}", start);
-        return json.substring(start, end).replace("\"", "").trim();
+        return "Sucesso! Transação persistida de forma estruturada. ID: " + cadastrada.getId();
     }
 }

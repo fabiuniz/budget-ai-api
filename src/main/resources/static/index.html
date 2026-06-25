@@ -98,7 +98,7 @@
 
         @media (min-width: 768px) {
             .main-layout {
-                grid-template-columns: 350px 1fr;
+                grid-template-columns: 380px 1fr;
             }
         }
 
@@ -125,11 +125,11 @@
             gap: 1rem;
         }
 
-        /* Modos de Entrada (Tabs) */
+        /* Modos de Entrada (Tabs estendidas para 3 opções) */
         .input-modes {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 0.5rem;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.35rem;
             background: var(--bg-color);
             padding: 0.25rem;
             border-radius: 8px;
@@ -140,12 +140,13 @@
             background: transparent;
             color: var(--text-muted);
             border: none;
-            padding: 0.5rem;
+            padding: 0.5rem 0.25rem;
             border-radius: 6px;
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
+            white-space: nowrap;
         }
 
         .mode-btn.active {
@@ -162,7 +163,7 @@
             display: block;
         }
 
-        /* Caixa de Arquivo (Original Restaurada) */
+        /* Caixa de Arquivo */
         .file-dropzone {
             border: 2px dashed var(--border);
             padding: 2rem 1rem;
@@ -189,7 +190,7 @@
             word-break: break-all;
         }
 
-        /* Caixa de Microfone (Nova) */
+        /* Caixa de Microfone */
         .mic-box {
             border: 2px dashed var(--border);
             padding: 1.5rem 1rem;
@@ -252,6 +253,53 @@
         audio {
             width: 100%;
             height: 40px;
+        }
+
+        /* Estilos da nova Aba do Servidor */
+        .server-box {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--bg-color);
+            max-height: 180px;
+            overflow-y: auto;
+            padding: 0.5rem;
+        }
+
+        .server-file-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.5rem;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            margin-bottom: 0.4rem;
+            font-size: 0.85rem;
+        }
+
+        .server-file-item span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 180px;
+            color: var(--text-main);
+            font-weight: 500;
+        }
+
+        .btn-action-sm {
+            background: var(--success);
+            color: white;
+            border: none;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-action-sm:hover {
+            background: #047857;
         }
 
         button[type="submit"] {
@@ -357,6 +405,7 @@
                 <div class="input-modes">
                     <button type="button" id="tabFile" class="mode-btn active">📁 Arquivo</button>
                     <button type="button" id="tabMic" class="mode-btn">🎤 Microfone</button>
+                    <button type="button" id="tabServer" class="mode-btn">☁️ Servidor</button>
                 </div>
 
                 <div id="contentFile" class="mode-content active">
@@ -383,6 +432,12 @@
                         <div id="previewContainer" class="audio-preview-container">
                             <audio id="audioPlayback" controls></audio>
                         </div>
+                    </div>
+                </div>
+
+                <div id="contentServer" class="mode-content">
+                    <div class="server-box" id="serverFilesList">
+                        <p style="text-align: center; color: var(--text-muted); font-size: 0.85rem; padding: 1rem;">Carregando repositório...</p>
                     </div>
                 </div>
 
@@ -423,11 +478,11 @@
 <script>
     const API_BASE_URL = '/api/budget';
     
-    // Variáveis de controle de Estado
-    let currentMode = 'file'; // 'file' ou 'mic'
+    let currentMode = 'file'; 
     let mediaRecorder;
     let audioChunks = [];
     let audioBlobFromMic = null;
+    let pollingIntervalId = null; 
 
     const formatCurrency = (value) => {
         return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -439,36 +494,111 @@
         return date.toLocaleDateString('pt-BR') + ' ' + date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     };
 
-    // --- LOGICA DE ALTERNÂNCIA DE ABAS ---
+    // --- LOGICA DAS ABAS (TABS) ---
     const tabFile = document.getElementById('tabFile');
     const tabMic = document.getElementById('tabMic');
+    const tabServer = document.getElementById('tabServer');
+    
     const contentFile = document.getElementById('contentFile');
     const contentMic = document.getElementById('contentMic');
+    const contentServer = document.getElementById('contentServer');
+    
     const fileInput = document.getElementById('audioFile');
+    const btnSubmit = document.getElementById('btnSubmit');
 
     tabFile.addEventListener('click', () => {
         currentMode = 'file';
-        tabFile.classList.add('active');
-        tabMic.classList.remove('active');
-        contentFile.classList.add('active');
-        contentMic.classList.remove('active');
-        // Para gravações do mic se esquecer ativo
-        if (mediaRecorder && mediaRecorder.state === "recording") mediaRecorder.stop();
+        switchTab(tabFile, contentFile);
+        btnSubmit.style.display = 'block'; // Mostra botão de submit padrão
     });
 
     tabMic.addEventListener('click', () => {
         currentMode = 'mic';
-        tabMic.classList.add('active');
-        tabFile.classList.remove('active');
-        contentMic.classList.add('active');
-        contentFile.classList.remove('active');
+        switchTab(tabMic, contentMic);
+        btnSubmit.style.display = 'block'; // Mostra botão de submit padrão
     });
 
-    // Feedback do input de arquivo original
+    tabServer.addEventListener('click', () => {
+        currentMode = 'server';
+        switchTab(tabServer, contentServer);
+        btnSubmit.style.display = 'none'; // Esconde botão padrão (cada item terá seu botão de disparo direto)
+        loadServerFiles();
+    });
+
+    function switchTab(activeTab, activeContent) {
+        [tabFile, tabMic, tabServer].forEach(tab => tab.classList.remove('active'));
+        [contentFile, contentMic, contentServer].forEach(content => content.classList.remove('active'));
+        
+        activeTab.classList.add('active');
+        activeContent.classList.add('active');
+        
+        if (mediaRecorder && mediaRecorder.state === "recording") mediaRecorder.stop();
+    }
+
     fileInput.addEventListener('change', function(e) {
         const fileName = e.target.files[0]?.name;
         document.getElementById('fileNamePreview').textContent = fileName ? `Selecionado: ${fileName}` : '';
     });
+
+    // --- CARREGAR ARQUIVOS DA PASTA UPLOADS DO SERVIDOR ---
+    async function loadServerFiles() {
+        const container = document.getElementById('serverFilesList');
+        container.innerHTML = '<p style="text-align: center; color: var(--text-muted); font-size: 0.85rem; padding: 1rem;">Buscando arquivos no servidor...</p>';
+        
+        try {
+            const response = await fetch(`${API_BASE_URL}/files`);
+            if (!response.ok) throw new Error();
+            const files = await response.json();
+            
+            container.innerHTML = '';
+            if (files.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: var(--text-muted); font-size: 0.85rem; padding: 1rem;">Nenhum arquivo encontrado em /uploads/.</p>';
+                return;
+            }
+            
+            files.forEach(filename => {
+                const item = document.createElement('div');
+                item.className = 'server-file-item';
+                item.innerHTML = `
+                    <span title="${filename}">${filename}</span>
+                    <button type="button" class="btn-action-sm" onclick="processServerFile('${filename}')">Injetar IA</button>
+                `;
+                container.appendChild(item);
+            });
+        } catch (err) {
+            container.innerHTML = '<p style="text-align: center; color: var(--danger); font-size: 0.85rem; padding: 1rem;">Falha ao conectar ao repositório.</p>';
+        }
+    }
+
+    // --- ENVIAR ARQUIVO DO SERVIDOR PARA PROCESSAMENTO (REPROCESS) ---
+    async function processServerFile(filename) {
+        const alertBox = document.getElementById('statusAlert');
+        
+        // Pega quantidade atual de linhas para o Polling reativo identificar novos inserts
+        const linhasAntes = document.getElementById('transactionsTableBody').getElementsByTagName('tr');
+        const qtdAntes = (linhasAntes.length === 1 && linhasAntes[0].textContent.includes("Nenhuma")) ? 0 : linhasAntes.length;
+        
+        alertBox.className = 'status-message loading';
+        alertBox.textContent = `🚀 Disparando pipeline para o arquivo: ${filename}...`;
+        
+        try {
+            const response = await fetch(`${API_BASE_URL}/reprocess/${filename}`, {
+                method: 'POST'
+            });
+            
+            if (!response.ok) throw new Error('Não foi possível processar este arquivo via SQS.');
+            
+            alertBox.className = 'status-message loading';
+            alertBox.textContent = '⏳ Encaminhado para a fila SQS! Monitorando banco de dados em tempo real...';
+            
+            // Inicia o Polling reativo idêntico ao fluxo de voz
+            iniciarPollingReativo(qtdAntes);
+            
+        } catch (error) {
+            alertBox.className = 'status-message error';
+            alertBox.textContent = error.message || 'Erro de processamento no servidor.';
+        }
+    }
 
     // --- CAPTURA DO MICROFONE ---
     const btnMic = document.getElementById('btnMic');
@@ -476,7 +606,6 @@
     const micStatus = document.getElementById('micStatus');
     const previewContainer = document.getElementById('previewContainer');
     const audioPlayback = document.getElementById('audioPlayback');
-    const btnSubmit = document.getElementById('btnSubmit');
 
     btnMic.addEventListener('click', async () => {
         if (mediaRecorder && mediaRecorder.state === "recording") {
@@ -515,6 +644,7 @@
         }
     });
 
+    // --- DASHBOARD METRICS ---
     async function updateDashboard() {
         try {
             const response = await fetch(`${API_BASE_URL}/dashboard`);
@@ -528,6 +658,7 @@
         }
     }
 
+    // --- ATUALIZAÇÃO DA TABELA ---
     async function updateTransactionsTable() {
         try {
             const response = await fetch(`${API_BASE_URL}/transactions`);
@@ -538,7 +669,7 @@
 
             if (transactions.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">Nenhuma transação encontrada.</td></tr>`;
-                return;
+                return transactions;
             }
 
             transactions.forEach(tx => {
@@ -554,26 +685,51 @@
                 `;
                 tbody.appendChild(tr);
             });
+            return transactions;
         } catch (error) {
             console.error(error);
+            return [];
         }
     }
 
-    // --- SUBMIT INTELIGENTE DO FORMULÁRIO (Múltiplas Origens) ---
+    // --- FUNÇÃO DE POLLING REATIVO ---
+    function iniciarPollingReativo(quantidadeAnterior) {
+        if (pollingIntervalId) clearInterval(pollingIntervalId);
+
+        const alertBox = document.getElementById('statusAlert');
+        
+        pollingIntervalId = setInterval(async () => {
+            try {
+                const transacoesAtuais = await updateTransactionsTable();
+                
+                if (transacoesAtuais.length > quantidadeAnterior) {
+                    clearInterval(pollingIntervalId); 
+                    await updateDashboard(); 
+                    
+                    alertBox.className = 'status-message success';
+                    alertBox.textContent = '✅ Sucesso! O áudio foi processado pelo Gemini e a transação já está no banco.';
+                    
+                    setTimeout(() => { alertBox.style.display = 'none'; }, 5000);
+                }
+            } catch (e) {
+                console.warn("Aguardando processamento assíncrono...", e);
+            }
+        }, 2000);
+    }
+
+    // --- SUBMIT DO FORMULÁRIO (SUBMISSÃO LOCAL: ABAS 1 E 2) ---
     document.getElementById('uploadForm').addEventListener('submit', async function(e) {
         e.preventDefault();
         const alertBox = document.getElementById('statusAlert');
         const formData = new FormData();
 
         if (currentMode === 'file') {
-            // Se estiver na aba de arquivo, valida e envia o arquivo do disco (.mp3, .wav)
             if (!fileInput.files.length) {
                 alert("Por favor, selecione um arquivo de áudio primeiro.");
                 return;
             }
             formData.append('file', fileInput.files[0]);
-        } else {
-            // Se estiver na aba do microfone, envia o blob gerado ao vivo (.webm)
+        } else if (currentMode === 'mic') {
             if (!audioBlobFromMic) {
                 alert("Por favor, grave uma mensagem de voz antes de processar.");
                 return;
@@ -581,9 +737,12 @@
             formData.append('file', audioBlobFromMic, 'audio_capture.webm');
         }
 
+        const linhasAntes = document.getElementById('transactionsTableBody').getElementsByTagName('tr');
+        const qtdAntes = (linhasAntes.length === 1 && linhasAntes[0].textContent.includes("Nenhuma")) ? 0 : linhasAntes.length;
+
         btnSubmit.disabled = true;
         alertBox.className = 'status-message loading';
-        alertBox.textContent = 'A Inteligência Artificial está analisando o áudio enviado... Aguarde.';
+        alertBox.textContent = '🚀 Enviando áudio... O pipeline em background (SQS + Kotlin Coroutines) será iniciado.';
 
         try {
             const response = await fetch(`${API_BASE_URL}/voice`, {
@@ -593,17 +752,16 @@
 
             if (!response.ok) throw new Error('O motor de IA não conseguiu interpretar a mensagem.');
 
-            alertBox.className = 'status-message loading'; // Mantém o estado visual de processamento
-            alertBox.textContent = 'Áudio recebido! A IA está processando em segundo plano. Atualize o histórico em instantes.';
+            alertBox.className = 'status-message loading';
+            alertBox.textContent = '⏳ Áudio aceito na fila! Processando inteligência preditiva em segundo plano...';
 
-            // Limpa os campos após sucesso
             fileInput.value = '';
             document.getElementById('fileNamePreview').textContent = '';
             audioBlobFromMic = null;
             previewContainer.style.display = "none";
             micStatus.textContent = "Clique no botão para falar";
 
-            await Promise.all([updateDashboard(), updateTransactionsTable()]);
+            iniciarPollingReativo(qtdAntes);
 
         } catch (error) {
             alertBox.className = 'status-message error';

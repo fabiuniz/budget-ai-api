@@ -2,6 +2,8 @@ package dio.infrastructure;
 
 import dio.application.input.TransactionService;
 import dio.domain.Transaction;
+import dio.domain.DashboardReport;
+import io.awspring.cloud.sqs.operations.SqsTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -9,23 +11,30 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
+import java.util.Arrays;
 
-import dio.domain.DashboardReport;
-import io.awspring.cloud.sqs.operations.SqsTemplate;
 
 @RestController
 @RequestMapping("/api/budget")
 @CrossOrigin(origins = "*")
 public class BudgetAiController {
 
-    // Remova ou mantenha a aiEngine dependendo se ainda usará chamadas diretas em outro lugar.
-    // private final BudgetAiEngine aiEngine; 
-    
     private final TransactionService transactionService;
     private final SqsTemplate sqsTemplate;
+    
+    // Java 21: Usando Virtual Threads para que a conversão/I/O não bloqueie o Tomcat
+    private final ExecutorService virtualThreadExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
-    private static final String UPLOAD_DIR = "/home/userlnx/docker/script_docker/java-ia/budget-ai-api/uploads/";
+    // Caminho dinâmico para rodar em qualquer ambiente (Local, Docker, AWS ECS)
+    private static final String UPLOAD_DIR = System.getProperty("user.dir") + "/uploads/";
 
     public BudgetAiController(TransactionService transactionService, SqsTemplate sqsTemplate) {
         this.transactionService = transactionService;
@@ -33,62 +42,70 @@ public class BudgetAiController {
     }
 
     @PostMapping("/voice")
-    public ResponseEntity<String> processVoice(@RequestParam("file") MultipartFile file) {
-        String nomeOriginal = file.getOriginalFilename();
-        System.out.println("[API-POST] Upload de áudio detectado: " + nomeOriginal);
+        public ResponseEntity<String> processVoice(@RequestParam("file") MultipartFile file) {
+            if (file.isEmpty()) {
+                return ResponseEntity.badRequest().body("Erro: O arquivo de áudio enviado está vazio.");
+            }
 
-        if (file.isEmpty()) {
-            return ResponseEntity.badRequest().body("Erro: O arquivo de áudio enviado está vazio.");
+            try {
+                // 1. Garante que o diretório principal /uploads/ existe
+                Files.createDirectories(Paths.get(UPLOAD_DIR));
+                
+                String rawId = UUID.randomUUID().toString();
+                String originalExt = file.getOriginalFilename() != null && file.getOriginalFilename().contains(".") 
+                        ? file.getOriginalFilename().substring(file.getOriginalFilename().lastIndexOf(".")) : ".tmp";
+                
+                // Salva o arquivo original temporário na raiz do /uploads/
+                Path arquivoOriginal = Paths.get(UPLOAD_DIR, rawId + originalExt);
+                file.transferTo(arquivoOriginal.toFile());
+
+                // Processamento Assíncrono com Virtual Threads
+                virtualThreadExecutor.submit(() -> {
+                    try {
+                        File arquivoFinal = arquivoOriginal.toFile();
+
+                        // === ALTERAÇÃO AQUI: Definindo a subpasta "fila" ===
+                        Path subpastaFila = Paths.get(UPLOAD_DIR, "fila");
+                        // Garante que a subpasta /uploads/fila/ existe antes de converter
+                        Files.createDirectories(subpastaFila); 
+
+                        if (!originalExt.equalsIgnoreCase(".mp3")) {
+                            // Modificado para salvar dentro de /uploads/fila/
+                            File arquivoMp3Convertido = subpastaFila.resolve(rawId + ".mp3").toFile();
+                            
+                            // Executa a conversão jogando o output para dentro de /uploads/fila/
+                            converterParaMp3(arquivoOriginal.toFile(), arquivoMp3Convertido);
+                            arquivoFinal = arquivoMp3Convertido;
+                            
+                            // Limpa o arquivo original da raiz do /uploads/
+                            Files.deleteIfExists(arquivoOriginal);
+                        } else {
+                            // Caso o arquivo JÁ SEJA MP3, movemos ele da raiz para a pasta "fila"
+                            File arquivoMovido = subpastaFila.resolve(rawId + ".mp3").toFile();
+                            Files.move(arquivoOriginal, arquivoMovido.toPath());
+                            arquivoFinal = arquivoMovido;
+                        }
+
+                        String caminhoFinal = arquivoFinal.getAbsolutePath();
+                        
+                        // Envia o caminho absoluto (já dentro da subpasta fila) para o SQS
+                        sqsTemplate.send(to -> to.queue("fila-audios-processar").payload(caminhoFinal));
+                        System.out.println("[API-POST] Arquivo publicado no barramento de mensageria: " + caminhoFinal);
+
+                    } catch (Exception e) {
+                        System.err.println("[ASYNC-PROCESS] Erro ao converter/enfileirar áudio: " + e.getMessage());
+                    }
+                });
+
+                return ResponseEntity.accepted().body("Áudio recebido com sucesso! O processamento em background foi iniciado.");
+
+            } catch (IOException e) {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body("Erro ao manipular o sistema de arquivos: " + e.getMessage());
+            }
         }
 
-        File arquivoParaProcessar = null;
-        File arquivoOriginalNoDisco = null;
-
-        try {
-            File pastaDestino = new File(UPLOAD_DIR);
-            if (!pastaDestino.exists()) {
-                pastaDestino.mkdirs();
-            }
-
-            arquivoOriginalNoDisco = new File(UPLOAD_DIR + nomeOriginal);
-            file.transferTo(arquivoOriginalNoDisco);
-            System.out.println("[API-POST] Arquivo original gravado: " + arquivoOriginalNoDisco.getAbsolutePath());
-
-            if (nomeOriginal != null && !nomeOriginal.toLowerCase().endsWith(".mp3")) {
-                System.out.println("[CONVERSOR] Detectado arquivo não-MP3. Iniciando conversão via FFmpeg...");
-                String nomeSemExtensao = nomeOriginal.substring(0, nomeOriginal.lastIndexOf("."));
-                File arquivoMp3Convertido = new File(UPLOAD_DIR + nomeSemExtensao + "_convertido.mp3");
-
-                converterParaMp3(arquivoOriginalNoDisco, arquivoMp3Convertido);
-                arquivoParaProcessar = arquivoMp3Convertido;
-            } else {
-                arquivoParaProcessar = arquivoOriginalNoDisco;
-            }
-
-            String caminhoArquivo = arquivoParaProcessar.getAbsolutePath();
-            System.out.println("[API-POST] Enfileirando arquivo para processamento da IA: " + caminhoArquivo);
-            
-            sqsTemplate.send(to -> to.queue("fila-audios-processar").payload(caminhoArquivo));
-
-            return ResponseEntity.accepted().body("Áudio recebido com sucesso! O processamento por IA iniciou em segundo plano.");
-
-        } catch (Exception e) {
-            System.err.println("[API-POST] Falha crítica: " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Erro interno ao receber o arquivo: " + e.getMessage());
-        }     
-    }
-
-    /**
-     * Método auxiliar que invoca o FFmpeg instalado no Linux para converter qualquer áudio em MP3 padrão.
-     */
     private void converterParaMp3(File input, File output) throws IOException, InterruptedException {
-        // Remove o arquivo de saída se ele já existir por algum resquício de teste anterior
-        if (output.exists()) {
-            output.delete();
-        }
-
-        // Comando FFmpeg: -i (input), -codec:a libmp3lame (encoder de mp3), -qscale:a 2 (alta qualidade VBR)
         ProcessBuilder pb = new ProcessBuilder(
             "ffmpeg", 
             "-y", // Força a sobrescrever o arquivo de saída caso ele exista
@@ -98,31 +115,79 @@ public class BudgetAiController {
             "-qscale:a", "2", 
             output.getAbsolutePath()
         );
-
-        // Redireciona mensagens de erro do processo para o console do Spring Boot para debug
         pb.redirectErrorStream(true);
         Process processo = pb.start();
-
-        // Aguarda a finalização da conversão com timeout ou até o fim do processo
         int exitCode = processo.waitFor();
         
         if (exitCode != 0) {
             throw new IOException("O FFmpeg falhou ao converter o áudio. Código de saída: " + exitCode);
         }
-        
-        System.out.println("[CONVERSOR] Conversão concluída com sucesso: " + output.getName());
     }
 
     @GetMapping("/transactions")
     public ResponseEntity<List<Transaction>> getAllTransactions() {
-        System.out.println("[API-GET] Listando transações.");
         return ResponseEntity.ok(transactionService.listarTodas());
     }
 
     @GetMapping("/dashboard")
     public ResponseEntity<DashboardReport> getDashboard() {
-        System.out.println("[API-GET] Requisição recebida para o painel de controle.");
-        DashboardReport relatorio = transactionService.obterRelatorioDashboard();
-        return ResponseEntity.ok(relatorio);
+        return ResponseEntity.ok(transactionService.obterRelatorioDashboard());
+    }
+
+    @GetMapping("/transactions/latest")
+    public ResponseEntity<Transaction> buscarUltimaTransacao() {
+        // Busca a lista de transações ordenadas pela data de criação decrescente
+        List<Transaction> transacoes = transactionService.listarTodas();        
+        if (transacoes.isEmpty()) {
+            return ResponseEntity.noContent().build();
+        }        
+        // Pega a mais recente (primeira da lista se ordenado por ID/Data desc, ou última da lista padrão)
+        Transaction ultima = transacoes.get(transacoes.size() - 1);        
+        return ResponseEntity.ok(ultima);
+    }
+
+    @GetMapping("/files")
+    public ResponseEntity<List<String>> listUploadedFiles() {
+        try {
+            Path pastaUpload = Paths.get(UPLOAD_DIR);
+            if (!Files.exists(pastaUpload)) {
+                return ResponseEntity.ok(List.of()); // Retorna lista vazia se a pasta não existir
+            }
+
+            // Lista todos os arquivos da pasta original que terminam com .mp3 ou .webm/.tmp enviados
+            List<String> arquivos = Files.list(pastaUpload)
+                    .filter(Files::isRegularFile)
+                    .map(path -> path.getFileName().toString())
+                    // Filtra para exibir apenas arquivos de áudio válidos na lista do usuário
+                    .filter(name -> name.endsWith(".mp3") || name.endsWith(".webm")) 
+                    .collect(Collectors.toList());
+
+            return ResponseEntity.ok(arquivos);
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
+        }
+    }
+
+    @PostMapping("/reprocess/{filename}")
+    public ResponseEntity<String> reprocessFile(@PathVariable String filename) {
+        try {
+            // Busca o arquivo exatamente onde ele foi gravado originalmente
+            Path caminhoArquivo = Paths.get(UPLOAD_DIR, filename);
+            File arquivo = caminhoArquivo.toFile();
+
+            if (!arquivo.exists()) {
+                return ResponseEntity.badRequest().body("Erro: Arquivo não encontrado no servidor.");
+            }
+
+            // Fluxo idêntico: injeta o caminho absoluto direto no barramento SQS
+            String caminhoAbsoluto = arquivo.getAbsolutePath();
+            sqsTemplate.send(to -> to.queue("fila-audios-processar").payload(caminhoAbsoluto));
+            System.out.println("[API-REPROCESS] Arquivo reenviado para processamento: " + caminhoAbsoluto);
+
+            return ResponseEntity.accepted().body("Arquivo enviado para reprocessamento com sucesso!");
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Erro ao reenviar arquivo: " + e.getMessage());
+        }
     }
 }

@@ -1,0 +1,45 @@
+openapi: 3.0.3
+info:
+  title: Budget AI API
+  version: 1.0.0
+  description: API nativa de IA para automação e análise de transações financeiras pessoais.
+paths:
+  /api/budget/voice:
+    post:
+      summary: Envia um comando de voz para processamento financeiro
+      operationId: uploadVoiceFile
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '222':
+          description: Arquivo recebido e enfileirado para processamento via tópicos e mensageria assíncrona.
+  /api/budget/dashboard:
+    get:
+      summary: Obtém o relatório consolidado do dashboard
+      operationId: getDashboard
+      responses:
+        '200':
+          description: Métricas agregadas geradas com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardReport'
+components:
+  schemas:
+    DashboardReport:
+      type: object
+      properties:
+        totalIncome:
+          type: number
+        totalExpense:
+          type: number
+        balance:
+          type: number

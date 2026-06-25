@@ -1,0 +1,17 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="BudgetAiApiApplication" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot" nameIsGenerated="true">
+    <option name="ACTIVE_PROFILES" value="prod" />
+    <module name="budget-ai-api" />
+    <option name="SPRING_BOOT_MAIN_CLASS" value="dio.BudgetAiApiApplication" />
+    <option name="VM_PARAMETERS" value="-Djava.net.preferIPv4Stack=true" />
+    <extension name="coverage">
+      <pattern>
+        <option name="PATTERN" value="dio.*" />
+        <option name="ENABLED" value="true" />
+      </pattern>
+    </extension>
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>
