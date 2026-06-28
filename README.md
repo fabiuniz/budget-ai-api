@@ -99,17 +99,17 @@ Gere um arquivo de configuração Maven estável utilizando as seguintes especif
   - `spring-boot-maven-plugin`.
 
 ### Arquivo: `docker-compose.yml`
-Provisionamento automatizado do banco de dados relacional oficial. Deve subir um container baseado em `postgres:15-alpine`, nomeado como `budget-postgres`, expondo a porta `5432:5432`, mapeando as credenciais de ambiente locais (`POSTGRES_USER: userlnx`, `POSTGRES_PASSWORD: super_senha_123`, `POSTGRES_DB: budget_ai_db`) e isolando os dados através de um volume nomeado (`pgdata`).
+Provisionamento automatizado do banco de dados relacional oficial. Deve subir um container baseado em `postgres:15-alpine`, nomeado como `budget-postgres`, expondo a porta `5433:5432`, mapeando as credenciais de ambiente locais (`POSTGRES_USER: userlnx`, `POSTGRES_PASSWORD: super_senha_123`, `POSTGRES_DB: budget_ai_db`) e isolando os dados através de um volume nomeado (`pgdata`).
 
 ### Arquivo: `sftp-config.json`
 Configure um arquivo JSON de sincronização com o host `vmlinuxd`, porta `22`, usuário `userlnx`, senha `1234`. O caminho remoto deve ser `/home/userlnx/docker/script_docker/java-ia/budget-ai-api`. Configure a propriedade `upload_on_save` como falsa e ignore expressões regulares clássicas de IDEs como `.idea`, `target`, `uploads` e `.git`.
 
 ### Arquivo: `src/main/resources/application.properties`
 Mapeie os parâmetros operacionais do Spring Boot e do ecossistema de banco de dados:
-- Definição da porta servidora (`server.port=8080`).
+- Definição da porta servidora (`server.port=8081`).
 - Captura de propriedade de sistema dinâmica para a chave da IA (`google.ai.studio.api.key=${GOOGLE_AI_KEY}`).
 - Limites de tamanho de requisição multipart fixados em `10MB` para suportar arquivos de áudio binários.
-- Driver de conexão apontando para `org.postgresql.Driver` utilizando a URL de conexão do container Docker: `jdbc:postgresql://localhost:5432/budget_ai_db`.
+- Driver de conexão apontando para `org.postgresql.Driver` utilizando a URL de conexão do container Docker: `jdbc:postgresql://localhost:5433/budget_ai_db`.
 - Estratégia de DDL configurada como `update` para geração automática de tabelas a partir das entidades de infraestrutura, com logs de SQL ativos (`spring.jpa.show-sql=true`).
 
 ---
@@ -201,12 +201,12 @@ Ao finalizar a execução das classes, garanta que os seguintes comportamentos s
 ```bash
     #apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
     # Obter relatório consolidado do dashboard via Stream API
-    curl -X GET http://localhost:8080/api/budget/dashboard
+    curl -X GET http://localhost:8081/api/budget/dashboard
       *Retorno esperado:* Um payload JSON contendo as chaves numéricas estruturadas e computadas pela Stream API:
        {"totalIncome":500.00,"totalExpense":0,"balance":500.00}
 
     # Postar audio para IA
-    curl -X POST -F "file=@uploads/audio_real_50.mp3" "http://localhost:8080/api/budget/voice"
+    curl -X POST -F "file=@uploads/audio_real_50.mp3" "http://localhost:8081/api/budget/voice"
       *Retorno esperado:* Uma string contendo respostas computadas pela Stream API:
         Sucesso! Áudio interpretado pelo Google AI Studio e registrado. ID: 4 | Tipo: INCOMEuserlnx@vmlinuxd:~/docker/script_docker/java-ia/budget-ai-api$ 
 
@@ -214,8 +214,6 @@ Ao finalizar a execução das classes, garanta que os seguintes comportamentos s
     espeak -v pt-br "Gastei 50 reais de almoço hoje" -w uploads/teste.wav && lame -V2 uploads/teste.wav uploads/audio_real_50.mp3 && rm teste.wav
       *Retorno esperado:* um audio mp3 com o texto informado
 
-   # Encerra à força processos travados na porta 8080 para evitar Address already in use
-   kill -9 $(lsof -t -i:8080) #(apt update && apt install -y lsof)Encerra à força processos travados na porta 8080 para evitar o erro Address already in use.
    # Inicialização limpa, carregando as chaves do .env e forçando a pilha IPv4
    export $(cat .env | xargs) && mvn spring-boot:run #Carrega as chaves secretas do arquivo .env diretamente para o escopo de execução do Maven
    export $(cat .env | xargs) && mvn spring-boot:run -Dspring-boot.run.jvmArguments="-Djava.net.preferIPv4Stack=true" #Forçamento de Pilha IPv4 (Correção de Conectividade)
@@ -225,10 +223,29 @@ Ao finalizar a execução das classes, garanta que os seguintes comportamentos s
    mvn test-compile exec:java -Dexec.classpathScope="test" -Dexec.mainClass="dio.Main"
    # Verificar Fila de mesageria
    docker exec -it -e AWS_ACCESS_KEY_ID=mock_key -e AWS_SECRET_ACCESS_KEY=mock_secret budget-sqs-local aws sqs get-queue-attributes \
-      --queue-url "http://sqs.sa-east-1.localhost.localstack.cloud:4566/000000000000/fila-audios-processar" \
+      --queue-url "http://sqs.sa-east-1.localhost.localstack.cloud:4567/000000000000/fila-audios-processar" \
       --attribute-names ApproximateNumberOfMessages ApproximateNumberOfMessagesNotVisible \
-      --endpoint-url=http://localhost:4566 \
+      --endpoint-url=http://localhost:4567 \
       --region sa-east-1
+```
+
+3.1 **Outras permissões:**
+
+```bash
+   # 1. Adiciona o seu usuário de desenvolvimento ao grupo do docker
+   usermod -aG docker userlnx
+   # 2. Aplica as novas permissões imediatamente ao arquivo de comunicação do Docker
+   chmod 666 /var/run/docker.sock
+   # 3. Reinicia o serviço do Docker para garantir a atualização
+   systemctl restart docker
+   # Apaga a pasta 'target' antiga completamente
+   cd /home/userlnx/docker/script_docker/java-ia/budget-ai-api
+   mvn clean
+   # Força o Spring Boot a compilar o projeto do zero atualizando os plugins em cache
+   mvn compile spring-boot:run -U
+   # Encerra à força processos travados na porta 8081 para evitar Address already in use
+   kill -9 $(lsof -t -i:8081) #(apt update && apt install -y lsof)Encerra à força processos travados na porta 8081 para evitar o erro Address already in use.
+
 ```
 4. **Configurando IntelliJ Idea: **
         (budget-ai-api/.idea/workspace.xml)

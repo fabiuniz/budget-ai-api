@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: super_senha_123
       POSTGRES_DB: budget_ai_db
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     restart: always
@@ -16,7 +16,7 @@ services:
       image: localstack/localstack:3.0.2
       container_name: budget-sqs-local
       ports:
-        - "4566:4566"
+        - "4567:4566"
       environment:
         - SERVICES=sqs
         - AWS_DEFAULT_REGION=sa-east-1
@@ -25,7 +25,7 @@ services:
       restart: unless-stopped
 
   zookeeper:
-    image: confluentinc/cp-zookeeper:7.4.0
+    image: confluentinc/cp-zookeeper:7.5.0
     container_name: budget-zookeeper
     ports:
       - "2181:2181"
@@ -34,16 +34,16 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
 
   kafka:
-    image: confluentinc/cp-kafka:7.4.0
+    image: confluentinc/cp-kafka:7.5.0
     container_name: budget-kafka
     depends_on:
       - zookeeper
     ports:
-      - "9092:9092"
+      - "9093:9093"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9093,PLAINTEXT_INTERNAL://kafka:29092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
